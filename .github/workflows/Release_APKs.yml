@@ -106,8 +106,11 @@ jobs:
           # 更健壮的获取COMMIT_HASH方式
           COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
           
-          # 获取最近提交信息
-          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
+          # 获取最近提交信息并生成Markdown链接
+          if [ "$COMMIT_HASH" != "unknown" ]; then
+            COMMIT_URL="https://github.com/${{ github.repository }}/commit/${COMMIT_HASH}"
+            FULL_COMMIT_MSG="[${FULL_COMMIT_MSG}](${COMMIT_URL})"
+          fi
           
           # 使用更可靠的变量赋值方式
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
@@ -122,6 +125,7 @@ jobs:
           ${FULL_COMMIT_MSG}
           <br>
           - 构建时间: ${BUILD_TIME}
+          - 提交哈希: ${COMMIT_HASH}
           - 包含版本: Normal(Android 8.0+), Compatible(Android 5.1-7.0)
           EOF
           EOR
@@ -137,12 +141,25 @@ jobs:
             ${{ env.COMPATIBLE_APK_PATH }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: 📢 发送Telegram发布通知
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            🚀 新版本已发布！
+            - 标签: ${{ env.TAG_NAME }}
+            - 构建时间: ${{ env.BUILD_TIME }}
+            - 发布说明:
+              ${{ env.RELEASE_NOTES }}
+
       - name: 📦 上传Normal APK
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
+            ✅ 正在上传Normal版本APK (Android 8.0+)
           document: |
             ${{ env.NORMAL_APK_PATH }}
 
@@ -152,5 +169,6 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
+            ✅ 正在上传兼容版本APK (Android 5.1-7.0)
           document: |
             ${{ env.COMPATIBLE_APK_PATH }}
