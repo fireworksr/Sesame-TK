@@ -44,21 +44,24 @@ jobs:
 
       - name: 构建APK
         run: |
-          ./gradlew assembleNormalRelease --stacktrace --build-cache --parallel --configure-on-demand --quiet
-          ./gradlew assembleCompatibleRelease --stacktrace --build-cache --parallel --configure-on-demand --quiet
-
+          #./gradlew assembleNormalRelease --stacktrace --build-cache --parallel --configure-on-demand --quiet
+          #./gradlew assembleCompatibleRelease --stacktrace --build-cache --parallel --configure-on-demand --quiet
+          ./gradlew assembleNormalRelease assembleCompatibleRelease -Pversion=${{ github.ref_name }}
       - name: 签名APK
         run: |
-          # 使用jarsigner对APK进行签名
+          # 将Base64编码的keystore内容写入临时文件
+          echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > /tmp/keystore.jks
+          
+          # 使用生成的keystore文件进行签名
           jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-          -keystore ${{ secrets.ANDROID_SIGNING_KEY }} \
+          -keystore /tmp/keystore.jks \
           -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
           -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
           app/build/outputs/apk/normal/release/*.apk \
           ${{ secrets.ANDROID_KEY_ALIAS }}
           
           jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-          -keystore ${{ secrets.ANDROID_SIGNING_KEY }} \
+          -keystore /tmp/keystore.jks \
           -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
           -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
           app/build/outputs/apk/compatible/release/*.apk \
@@ -84,7 +87,7 @@ jobs:
         id: generate_release_info
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)
-          FULL_COMMIT_MSG=$(git log -3 --pretty=format:"%B")
+          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B")
           
           # 使用Python处理转义
           ESCAPED_MSG=$(python3 -c "
