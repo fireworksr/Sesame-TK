@@ -85,37 +85,40 @@ jobs:
           VERSION_NAME=$(grep -oP 'val major = \K\d+' app/build.gradle.kts).$(grep -oP 'val minor = \K\d+' app/build.gradle.kts).$(grep -oP 'val patch = \K\d+' app/build.gradle.kts)-$(grep -oP 'val buildTag = "\K[^"]+' app/build.gradle.kts)
           # 生成YYYYMMDDHHMMSS格式的构建时间戳（修正为年在前，确保唯一性）
           BUILD_TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+          # 添加APK文件名提取
+          NORMAL_APK_NAME="Sesame-TK-Normal-${VERSION_NAME}-${BUILD_TIMESTAMP}-release.apk"
+          COMPATIBLE_APK_NAME="Sesame-TK-Compatible-${VERSION_NAME}-${BUILD_TIMESTAMP}-release.apk"
+          
           echo "TAG_NAME=v${VERSION_NAME}_${BUILD_TIMESTAMP}" >> $GITHUB_ENV
           echo "version=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "timestamp=$BUILD_TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "NORMAL_APK_NAME=${NORMAL_APK_NAME}" >> $GITHUB_ENV
+          echo "COMPATIBLE_APK_NAME=${COMPATIBLE_APK_NAME}" >> $GITHUB_ENV
 
       - name: 生成发布信息
         id: generate_release_info
         run: |
-          COMMIT_HASH=$(git rev-parse --short HEAD)
-          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B")
+          # 更健壮的获取COMMIT_HASH方式
+          COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
           
-          # 直接处理换行符
-          FORMATTED_MSG=$(echo "$FULL_COMMIT_MSG" | sed 's/$/<br>/' || echo "未找到提交信息")
-          BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
+          # 改进提交信息处理，确保中文内容正确处理
+          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
           
-          # 使用EOF而非EOR，并直接写入变量值
-          cat <<EOF > release_notes.md
+          # 使用更可靠的变量赋值方式
+          echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
+          echo "COMMIT_MESSAGE=${FULL_COMMIT_MSG}" >> $GITHUB_ENV
+          
+          # 简化发布信息生成逻辑
+          cat <<EOR >> $GITHUB_ENV
+          RELEASE_NOTES<<EOF
           ## 自动构建版本
           ### 提交详情  
-          $FORMATTED_MSG
+          ${FULL_COMMIT_MSG}
           <br>
-          - 构建时间: $BUILD_TIME
+          - 构建时间: $(date +'%Y-%m-%d %H:%M:%S')
           - 包含版本: Normal(Android 8.0+), Compatible(Android 5.1-7.0)
           EOF
-          
-          # 读取文件内容到环境变量
-          RELEASE_NOTES=$(cat release_notes.md)
-          echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
-          echo "$RELEASE_NOTES" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          
-          echo "COMMIT_MESSAGE=$FULL_COMMIT_MSG" >> $GITHUB_ENV
+          EOR
 
       - name: 创建GitHub Release
         uses: softprops/action-gh-release@v1
@@ -138,8 +141,8 @@ jobs:
             版本号: v${{ steps.build_info.outputs.version }}
             提交信息: 
             ${{ env.RELEASE_NOTES }}
-            Normal版本(Android 8.0+): https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/app-normal-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
-            兼容版本(Android 5.1-7.0): https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/app-compatible-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
+            Normal版本(Android 8.0+): https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/${{ env.NORMAL_APK_NAME }}
+            兼容版本(Android 5.1-7.0): https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/${{ env.COMPATIBLE_APK_NAME }}
 
       - name: 📦 上传Normal APK
         uses: appleboy/telegram-action@master
@@ -147,9 +150,9 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            
+            ✅ 正在上传Normal版本APK (Android 8.0+)
           document: |
-            ./app-normal-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
+            app/build/outputs/apk/normal/release/${{ env.NORMAL_APK_NAME }}
       
       - name: 📦 上传兼容 APK
         uses: appleboy/telegram-action@master
@@ -157,6 +160,6 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            
+            ✅ 正在上传兼容版本APK (Android 5.1-7.0)
           document: |
-            ./app-compatible-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
+            app/build/outputs/apk/compatible/release/${{ env.COMPATIBLE_APK_NAME }}
