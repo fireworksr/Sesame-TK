@@ -51,18 +51,18 @@ jobs:
         run: |
           # 使用jarsigner对APK进行签名
           jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-          -keystore ${{ secrets.KEYSTORE_FILE }} \
-          -storepass ${{ secrets.KEYSTORE_PASSWORD }} \
-          -keypass ${{ secrets.KEY_PASSWORD }} \
+          -keystore ${{ secrets.ANDROID_SIGNING_KEY }} \
+          -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+          -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
           app/build/outputs/apk/normal/release/*.apk \
-          ${{ secrets.KEY_ALIAS }}
+          ${{ secrets.ANDROID_KEY_ALIAS }}
           
           jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-          -keystore ${{ secrets.KEYSTORE_FILE }} \
-          -storepass ${{ secrets.KEYSTORE_PASSWORD }} \
-          -keypass ${{ secrets.KEY_PASSWORD }} \
+          -keystore ${{ secrets.ANDROID_SIGNING_KEY }} \
+          -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+          -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
           app/build/outputs/apk/compatible/release/*.apk \
-          ${{ secrets.KEY_ALIAS }}
+          ${{ secrets.ANDROID_KEY_ALIAS }}
 
       - name: 验证签名
         run: |
@@ -84,7 +84,7 @@ jobs:
         id: generate_release_info
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)
-          FULL_COMMIT_MSG=$(git log -3 --pretty=format:"%B")
+          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B")
           
           # 使用Python处理转义
           ESCAPED_MSG=$(python3 -c "
