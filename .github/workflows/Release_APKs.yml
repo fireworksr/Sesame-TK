@@ -143,6 +143,9 @@ jobs:
             提交信息: 
             ${{ env.RELEASE_NOTES }}
 
+      - name: 📦 检查Normal APK是否存在
+        run: ls -l app/build/outputs/apk/normal/release/${{ env.NORMAL_APK_NAME }}
+
       - name: 📦 上传Normal APK
         uses: appleboy/telegram-action@master
         with:
@@ -152,6 +155,9 @@ jobs:
             ✅ 正在上传Normal版本APK (Android 8.0+)
           document: |
             app/build/outputs/apk/normal/release/${{ env.NORMAL_APK_NAME }}
+
+      - name: 📦 检查兼容 APK是否存在
+        run: ls -l app/build/outputs/apk/compatible/release/${{ env.COMPATIBLE_APK_NAME }}
 
       - name: 📦 上传兼容 APK
         uses: appleboy/telegram-action@master
