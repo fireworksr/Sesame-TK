@@ -34,6 +34,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
+            ~/.gradle/build-cache-1  # 添加构建缓存路径
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
@@ -43,17 +44,34 @@ jobs:
 
       - name: 构建APK
         run: |
-          ./gradlew assembleNormalRelease --stacktrace --info
-          ./gradlew assembleCompatibleRelease --stacktrace --info
+          ./gradlew assembleNormalRelease --stacktrace --info --build-cache --parallel --configure-on-demand
+          ./gradlew assembleCompatibleRelease --stacktrace --info --build-cache --parallel --configure-on-demand
 
       - name: 验证构建产物
         run: |
           # 检查APK文件是否存在
+          echo "检查normal版本APK路径:"
           ls -l app/build/outputs/apk/normal/release/
+          echo "检查compatible版本APK路径:"
           ls -l app/build/outputs/apk/compatible/release/
-          # 如果文件不存在则失败
-          [ -f "app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk" ] || exit 1
-          [ -f "app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk" ] || exit 1
+          
+          # 验证文件路径和名称
+          NORMAL_APK_PATH="app/build/outputs/apk/normal/release/app-normal-release.apk"
+          COMPATIBLE_APK_PATH="app/build/outputs/apk/compatible/release/app-compatible-release.apk"
+          
+          if [ ! -f "$NORMAL_APK_PATH" ]; then
+            echo "错误: 未找到normal版本APK文件: $NORMAL_APK_PATH"
+            exit 1
+          fi
+          
+          if [ ! -f "$COMPATIBLE_APK_PATH" ]; then
+            echo "错误: 未找到compatible版本APK文件: $COMPATIBLE_APK_PATH"
+            exit 1
+          fi
+          
+          echo "验证通过，APK文件存在:"
+          echo "- $NORMAL_APK_PATH"
+          echo "- $COMPATIBLE_APK_PATH"
 
       - name: 提取构建信息
         id: build_info
