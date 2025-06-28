@@ -8,7 +8,170 @@ on:
       - completed
 
 jobs:
+  build-multiple-apks:name: Build and Release APKs
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["sync-upstream"]
+    types:
+      - completed
+
+jobs:
   build-multiple-apks:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: 设置时区
+        run: sudo timedatectl set-timezone Asia/Shanghai
+
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 设置JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: 缓存Gradle依赖
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/build-cache-1  # 添加构建缓存路径
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 授予Gradle执行权限
+        run: chmod +x ./gradlew
+
+      - name: 构建APK
+        run: |
+          ./gradlew assembleNormalRelease assembleCompatibleRelease \
+          -Pversion=${{ github.ref_name }} \
+          --parallel \
+          --configure-on-demand \
+          --build-cache \
+          --no-daemon
+
+      - name: 签名APK
+        run: |
+          # 将Base64编码的keystore内容写入临时文件
+          echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > /tmp/keystore.jks
+          
+          # 并行签名两个APK
+          (jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+          -keystore /tmp/keystore.jks \
+          -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+          -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
+          app/build/outputs/apk/normal/release/*.apk \
+          ${{ secrets.ANDROID_KEY_ALIAS }} ) &
+          
+          (jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+          -keystore /tmp/keystore.jks \
+          -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+          -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
+          app/build/outputs/apk/compatible/release/*.apk \
+          ${{ secrets.ANDROID_KEY_ALIAS }} ) &
+          
+          wait # 等待所有签名任务完成
+
+      - name: 提取构建信息
+        id: build_info
+        run: |
+          # 从build.gradle提取versionName
+          VERSION_NAME=$(grep -oP 'val major = \K\d+' app/build.gradle.kts).$(grep -oP 'val minor = \K\d+' app/build.gradle.kts).$(grep -oP 'val patch = \K\d+' app/build.gradle.kts)-$(grep -oP 'val buildTag = "\K[^"]+' app/build.gradle.kts)
+          # 生成YYYYMMDDHHMMSS格式的构建时间戳（修正为年在前，确保唯一性）
+          BUILD_TIMESTAMP=$(date +"%m.%d.%H.%M.%S")
+          echo "TAG_NAME=v${VERSION_NAME}_${BUILD_TIMESTAMP}" >> $GITHUB_ENV
+          echo "version=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "timestamp=$BUILD_TIMESTAMP" >> $GITHUB_OUTPUT
+
+      - name: 生成发布信息
+        id: generate_release_info
+        run: |
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B")
+          
+          # 使用Python处理转义
+          ESCAPED_MSG=$(python3 -c "
+          import sys, json
+          try:
+              content = sys.stdin.read()
+              print(json.dumps(content, ensure_ascii=True, indent=None))
+          except Exception as e:
+              print(json.dumps('Error processing message: ' + str(e), ensure_ascii=True))" <<< "$FULL_COMMIT_MSG")
+          
+          # 移除首尾引号并添加默认值
+          ESCAPED_MSG=$(echo "$ESCAPED_MSG" | sed 's/^\"\(.*\)\"$/\1/' || echo "获取提交信息失败")
+          
+          # 将换行符转换为HTML换行标签
+          FORMATTED_MSG=$(echo "${ESCAPED_MSG//$'\n'/<br>}")
+          
+          # 使用heredoc语法正确设置多行环境变量
+          cat <<'EOR' >> $GITHUB_ENV
+          RELEASE_NOTES<<EOF
+          ## 自动构建版本
+          ### 提交详情  
+          ${FORMATTED_MSG:-"未找到提交信息"}
+          <br>
+          - 构建时间: $(date +'%Y-%m-%d %H:%M:%S')
+          - 包含版本: Normal(Android 8.0+), Compatible(Android 5.1-7.0)
+          EOF
+          EOR
+          
+          echo "COMMIT_MESSAGE=$FULL_COMMIT_MSG" >> $GITHUB_ENV
+
+      - name: 创建GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}"
+          body: ${{ env.RELEASE_NOTES }}
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk
+            app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 发送Telegram通知
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            🚀 新版本发布!
+            版本号: v${{ steps.build_info.outputs.version }}
+            提交信息: ${{ env.COMMIT_MESSAGE }}
+            Normal版本(Android 8.0+): https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/app-normal-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
+            兼容版本(Android 5.1-7.0): https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/app-compatible-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
+
+      - name: 📦 上传Normal APK
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            
+          document: |
+            ./app-normal-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
+      
+      - name: 📦 上传兼容 APK
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            
+          document: |
+            ./app-compatible-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
+
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
