@@ -55,17 +55,17 @@ jobs:
           echo "检查compatible版本APK路径:"
           ls -l app/build/outputs/apk/compatible/release/
           
-          # 验证文件路径和名称
-          NORMAL_APK_PATH="app/build/outputs/apk/normal/release/app-normal-release.apk"
-          COMPATIBLE_APK_PATH="app/build/outputs/apk/compatible/release/app-compatible-release.apk"
+          # 验证文件路径和名称 - 修改为匹配实际文件名模式
+          NORMAL_APK_PATH=$(ls app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk | head -n 1)
+          COMPATIBLE_APK_PATH=$(ls app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk | head -n 1)
           
-          if [ ! -f "$NORMAL_APK_PATH" ]; then
-            echo "错误: 未找到normal版本APK文件: $NORMAL_APK_PATH"
+          if [ -z "$NORMAL_APK_PATH" ]; then
+            echo "错误: 未找到normal版本APK文件"
             exit 1
           fi
           
-          if [ ! -f "$COMPATIBLE_APK_PATH" ]; then
-            echo "错误: 未找到compatible版本APK文件: $COMPATIBLE_APK_PATH"
+          if [ -z "$COMPATIBLE_APK_PATH" ]; then
+            echo "错误: 未找到compatible版本APK文件"
             exit 1
           fi
           
@@ -86,9 +86,12 @@ jobs:
 
       - name: 重命名APK文件
         run: |
-          # 修正APK文件路径
-          mv app/build/outputs/apk/normal/release/app-normal-release.apk app-normal-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
-          mv app/build/outputs/apk/compatible/release/app-compatible-release.apk app-compatible-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
+          # 获取实际APK文件路径并重命名
+          ORIG_NORMAL_APK=$(ls app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk | head -n 1)
+          ORIG_COMPATIBLE_APK=$(ls app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk | head -n 1)
+          
+          mv "$ORIG_NORMAL_APK" app-normal-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
+          mv "$ORIG_COMPATIBLE_APK" app-compatible-v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}-release.apk
 
       - name: 生成发布信息
         id: generate_release_info
