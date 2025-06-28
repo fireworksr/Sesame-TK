@@ -73,11 +73,6 @@ jobs:
           
           wait # 等待所有签名任务完成
 
-      #- name: 验证签名
-        #run: |
-          #jarsigner -verify -verbose -certs app/build/outputs/apk/normal/release/*.apk
-          #jarsigner -verify -verbose -certs app/build/outputs/apk/compatible/release/*.apk
-
       - name: 提取构建信息
         id: build_info
         run: |
@@ -101,24 +96,46 @@ jobs:
           # 更健壮的获取COMMIT_HASH方式
           COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
           
-          # 改进提交信息处理，确保中文内容正确处理
+          # 获取最近提交信息
           FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
+          
+          # 创建配置文件链接
+          CONFIG_LINK="[Release_APKs.yml](https://github.com/${{ github.repository }}/blob/main/.github/workflows/release.yml)"
           
           # 使用更可靠的变量赋值方式
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE=${FULL_COMMIT_MSG}" >> $GITHUB_ENV
+          echo "CONFIG_LINK=${CONFIG_LINK}" >> $GITHUB_ENV
           
-          # 简化发布信息生成逻辑
+          # 生成发布信息
+          BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
           cat <<EOR >> $GITHUB_ENV
           RELEASE_NOTES<<EOF
           ## 自动构建版本
           ### 提交详情  
-          ${FULL_COMMIT_MSG}
+          ${FULL_COMMIT_MSG//Release_APKs.yml/$CONFIG_LINK}
           <br>
-          - 构建时间: $(date +'%Y-%m-%d %H:%M:%S')
+          - 构建时间: ${BUILD_TIME}
           - 包含版本: Normal(Android 8.0+), Compatible(Android 5.1-7.0)
           EOF
           EOR
+
+      - name: 发送Telegram通知
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          parse_mode: markdown
+          message: |
+            🚀 *新版本发布!*
+            *版本号*: v${{ steps.build_info.outputs.version }}
+            
+            *提交信息*:
+            ${{ env.RELEASE_NOTES }}
+            
+            *下载链接*:
+            - [Normal版本(Android 8.0+)](${{ github.server_url }}/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/${{ env.NORMAL_APK_NAME }})
+            - [兼容版本(Android 5.1-7.0)](${{ github.server_url }}/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/${{ env.COMPATIBLE_APK_NAME }})
 
       - name: 创建GitHub Release
         uses: softprops/action-gh-release@v1
