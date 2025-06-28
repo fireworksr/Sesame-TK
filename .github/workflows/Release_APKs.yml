@@ -1,0 +1,169 @@
+name: Build and Release APKs
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["sync-upstream"]
+    types:
+      - completed
+
+jobs:
+  build-multiple-apks:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: 设置时区
+        run: sudo timedatectl set-timezone Asia/Shanghai
+
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 设置JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '23'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: 缓存Gradle依赖
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/build-cache-1  # 添加构建缓存路径
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: 授予Gradle执行权限
+        run: chmod +x ./gradlew
+
+      - name: 构建APK
+        run: |
+          ./gradlew assembleNormalRelease assembleCompatibleRelease \
+          -Pversion=${{ github.ref_name }} \
+          --parallel \
+          --configure-on-demand \
+          --build-cache \
+          --no-daemon
+
+      - name: 签名APK
+        run: |
+          # 将Base64编码的keystore内容写入临时文件
+          echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > /tmp/keystore.jks
+          
+          # 并行签名两个APK
+          (jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore /tmp/keystore.jks \
+            -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
+            app/build/outputs/apk/normal/release/*.apk \
+            ${{ secrets.ANDROID_KEY_ALIAS }} ) &
+          
+          (jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore /tmp/keystore.jks \
+            -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
+            app/build/outputs/apk/compatible/release/*.apk \
+            ${{ secrets.ANDROID_KEY_ALIAS }} ) &
+          
+          wait # 等待所有签名任务完成
+
+      - name: 获取签名后的Normal APK路径
+        run: |
+          NORMAL_APK_PATH=$(ls app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk | head -n 1)
+          echo "NORMAL_APK_PATH=${NORMAL_APK_PATH}" >> $GITHUB_ENV
+
+      - name: 获取签名后的Compatible APK路径
+        run: |
+          COMPATIBLE_APK_PATH=$(ls app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk | head -n 1)
+          echo "COMPATIBLE_APK_PATH=${COMPATIBLE_APK_PATH}" >> $GITHUB_ENV
+
+      - name: 提取构建信息
+        id: build_info
+        run: |
+          # 从build.gradle提取versionName
+          VERSION_NAME=$(grep -oP 'val major = \K\d+' app/build.gradle.kts).$(grep -oP 'val minor = \K\d+' app/build.gradle.kts).$(grep -oP 'val patch = \K\d+' app/build.gradle.kts)-$(grep -oP 'val buildTag = "\K[^"]+' app/build.gradle.kts)
+          # 生成YYYYMMDDHHMMSS格式的构建时间戳（修正为年在前，确保唯一性）
+          BUILD_TIMESTAMP=$(date +"%m.%d.%H.%M.%S")
+          # 添加APK文件名提取
+          NORMAL_APK_NAME="Sesame-TK-Normal-${VERSION_NAME}-${BUILD_TIMESTAMP}-release.apk"
+          COMPATIBLE_APK_NAME="Sesame-TK-Compatible-${VERSION_NAME}-${BUILD_TIMESTAMP}-release.apk"
+          
+          echo "TAG_NAME=v${VERSION_NAME}_${BUILD_TIMESTAMP}" >> $GITHUB_ENV
+          echo "version=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "timestamp=$BUILD_TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "NORMAL_APK_NAME=${NORMAL_APK_NAME}" >> $GITHUB_ENV
+          echo "COMPATIBLE_APK_NAME=${COMPATIBLE_APK_NAME}" >> $GITHUB_ENV
+
+      - name: 生成发布信息
+        id: generate_release_info
+        run: |
+          # 更健壮的获取COMMIT_HASH方式
+          COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          
+          # 获取最近提交信息
+          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
+          
+          # 使用更可靠的变量赋值方式
+          echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
+          echo "COMMIT_MESSAGE=${FULL_COMMIT_MSG}" >> $GITHUB_ENV
+          
+          # 生成发布信息
+          BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
+          cat <<EOR >> $GITHUB_ENV
+          RELEASE_NOTES<<EOF
+          ## 自动构建版本
+          ### 提交详情: ${COMMIT_HASH}  
+          ${FULL_COMMIT_MSG}
+          - 构建时间: ${BUILD_TIME}
+          - 包含版本: Normal(Android 8.0+), Compatible(Android 5.1-7.0)
+          EOF
+          EOR
+
+      - name: 创建GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}"
+          body: ${{ env.RELEASE_NOTES }}
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            ${{ env.NORMAL_APK_PATH }}
+            ${{ env.COMPATIBLE_APK_PATH }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📢 发送Telegram发布通知
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            🚀 新版本已发布！
+            - 标签: ${{ env.TAG_NAME }}
+            - 构建时间: ${{ env.BUILD_TIME }}
+            - 发布说明:
+              ${{ env.RELEASE_NOTES }}
+
+      - name: 📦 上传Normal APK
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            
+          document: |
+            ${{ env.NORMAL_APK_PATH }}
+
+      - name: 📦 上传兼容 APK
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            
+          document: |
+            ${{ env.COMPATIBLE_APK_PATH }}
