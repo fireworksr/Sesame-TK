@@ -109,13 +109,9 @@ jobs:
           # 获取最近提交信息
           FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
           
-          # 创建配置文件链接
-          CONFIG_LINK="[Release_APKs.yml](https://github.com/${{ github.repository }}/blob/main/.github/workflows/release.yml)"
-          
           # 使用更可靠的变量赋值方式
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE=${FULL_COMMIT_MSG}" >> $GITHUB_ENV
-          echo "CONFIG_LINK=${CONFIG_LINK}" >> $GITHUB_ENV
           
           # 生成发布信息
           BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
@@ -123,7 +119,7 @@ jobs:
           RELEASE_NOTES<<EOF
           ## 自动构建版本
           ### 提交详情  
-          ${FULL_COMMIT_MSG//Release_APKs.yml/$CONFIG_LINK}
+          ${FULL_COMMIT_MSG}
           <br>
           - 构建时间: ${BUILD_TIME}
           - 包含版本: Normal(Android 8.0+), Compatible(Android 5.1-7.0)
@@ -141,28 +137,12 @@ jobs:
             ${{ env.COMPATIBLE_APK_PATH }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 发送Telegram通知
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          parse_mode: markdown
-          message: |
-            🚀 *新版本发布!*
-            版本号: v${{ steps.build_info.outputs.version }}
-            提交信息: 
-            ${{ env.RELEASE_NOTES }}
-
-      #- name: 📦 检查Normal APK是否存在
-        #run: ls -l ${{ env.NORMAL_APK_PATH }}
-
       - name: 📦 上传Normal APK
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ✅ 正在上传Normal版本APK (Android 8.0+)
           document: |
             ${{ env.NORMAL_APK_PATH }}
 
@@ -172,6 +152,5 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ✅ 正在上传兼容版本APK (Android 5.1-7.0)
           document: |
             ${{ env.COMPATIBLE_APK_PATH }}
