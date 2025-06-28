@@ -107,7 +107,8 @@ jobs:
           COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
           
           # 获取最近提交信息
-          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
+          #FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
+          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | tail -n +2 | sed 's/"/\\"/g' | tr '\n' ' ')
           
           # 使用更可靠的变量赋值方式
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
@@ -118,7 +119,7 @@ jobs:
           cat <<EOR >> $GITHUB_ENV
           RELEASE_NOTES<<EOF
           ## 自动构建版本
-          ### 提交详情: ${COMMIT_HASH}  
+          ## 提交详情: ${COMMIT_HASH}  
           ${FULL_COMMIT_MSG}
           - 构建时间: ${BUILD_TIME}
           - 包含版本: Normal(Android 8.0+), Compatible(Android 5.1-7.0)
