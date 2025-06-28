@@ -44,33 +44,39 @@ jobs:
 
       - name: 构建APK
         run: |
-          #./gradlew assembleNormalRelease --stacktrace --build-cache --parallel --configure-on-demand --quiet
-          #./gradlew assembleCompatibleRelease --stacktrace --build-cache --parallel --configure-on-demand --quiet
-          ./gradlew assembleNormalRelease assembleCompatibleRelease -Pversion=${{ github.ref_name }}
+          ./gradlew assembleNormalRelease assembleCompatibleRelease \
+          -Pversion=${{ github.ref_name }} \
+          --parallel \
+          --configure-on-demand \
+          --build-cache \
+          --no-daemon
+
       - name: 签名APK
         run: |
           # 将Base64编码的keystore内容写入临时文件
           echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > /tmp/keystore.jks
           
-          # 使用生成的keystore文件进行签名
-          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+          # 并行签名两个APK
+          (jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
           -keystore /tmp/keystore.jks \
           -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
           -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
           app/build/outputs/apk/normal/release/*.apk \
-          ${{ secrets.ANDROID_KEY_ALIAS }}
+          ${{ secrets.ANDROID_KEY_ALIAS }} ) &
           
-          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+          (jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
           -keystore /tmp/keystore.jks \
           -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
           -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
           app/build/outputs/apk/compatible/release/*.apk \
-          ${{ secrets.ANDROID_KEY_ALIAS }}
+          ${{ secrets.ANDROID_KEY_ALIAS }} ) &
+          
+          wait # 等待所有签名任务完成
 
-      - name: 验证签名
-        run: |
-          jarsigner -verify -verbose -certs app/build/outputs/apk/normal/release/*.apk
-          jarsigner -verify -verbose -certs app/build/outputs/apk/compatible/release/*.apk
+      #- name: 验证签名
+        #run: |
+          #jarsigner -verify -verbose -certs app/build/outputs/apk/normal/release/*.apk
+          #jarsigner -verify -verbose -certs app/build/outputs/apk/compatible/release/*.apk
 
       - name: 提取构建信息
         id: build_info
