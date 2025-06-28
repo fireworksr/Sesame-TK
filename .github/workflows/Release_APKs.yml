@@ -120,17 +120,6 @@ jobs:
           EOF
           EOR
 
-      - name: 创建GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: "v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}"
-          body: ${{ env.RELEASE_NOTES }}
-          tag_name: ${{ env.TAG_NAME }}
-          files: |
-            app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk
-            app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: 发送Telegram通知
         uses: appleboy/telegram-action@master
         with:
@@ -168,3 +157,14 @@ jobs:
             ✅ 正在上传兼容版本APK (Android 5.1-7.0)
           document: |
             app/build/outputs/apk/compatible/release/${{ env.COMPATIBLE_APK_NAME }}
+
+      - name: 创建GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}"
+          body: ${{ env.RELEASE_NOTES }}
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk
+            app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk
+          token: ${{ secrets.GITHUB_TOKEN }}
