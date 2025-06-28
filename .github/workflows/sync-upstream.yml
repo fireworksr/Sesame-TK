@@ -34,6 +34,6 @@ jobs:
             github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              workflow_id: 'release.yml',
+              workflow_id: 'Release_APKs.yml',
               ref: 'main'
             })
