@@ -73,6 +73,16 @@ jobs:
           
           wait # 等待所有签名任务完成
 
+      - name: 获取签名后的Normal APK路径
+        run: |
+          NORMAL_APK_PATH=$(ls app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk | head -n 1)
+          echo "NORMAL_APK_PATH=${NORMAL_APK_PATH}" >> $GITHUB_ENV
+
+      - name: 获取签名后的Compatible APK路径
+        run: |
+          COMPATIBLE_APK_PATH=$(ls app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk | head -n 1)
+          echo "COMPATIBLE_APK_PATH=${COMPATIBLE_APK_PATH}" >> $GITHUB_ENV
+
       - name: 提取构建信息
         id: build_info
         run: |
@@ -120,6 +130,17 @@ jobs:
           EOF
           EOR
 
+      - name: 创建GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}"
+          body: ${{ env.RELEASE_NOTES }}
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            ${{ env.NORMAL_APK_PATH }}
+            ${{ env.COMPATIBLE_APK_PATH }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: 发送Telegram通知
         uses: appleboy/telegram-action@master
         with:
@@ -132,8 +153,8 @@ jobs:
             提交信息: 
             ${{ env.RELEASE_NOTES }}
 
-      - name: 📦 检查Normal APK是否存在
-        run: ls -l app/build/outputs/apk/normal/release/${{ env.NORMAL_APK_NAME }}
+      #- name: 📦 检查Normal APK是否存在
+        #run: ls -l ${{ env.NORMAL_APK_PATH }}
 
       - name: 📦 上传Normal APK
         uses: appleboy/telegram-action@master
@@ -143,10 +164,7 @@ jobs:
           message: |
             ✅ 正在上传Normal版本APK (Android 8.0+)
           document: |
-            app/build/outputs/apk/normal/release/${{ env.NORMAL_APK_NAME }}
-
-      - name: 📦 检查兼容 APK是否存在
-        run: ls -l app/build/outputs/apk/compatible/release/${{ env.COMPATIBLE_APK_NAME }}
+            ${{ env.NORMAL_APK_PATH }}
 
       - name: 📦 上传兼容 APK
         uses: appleboy/telegram-action@master
@@ -156,15 +174,4 @@ jobs:
           message: |
             ✅ 正在上传兼容版本APK (Android 5.1-7.0)
           document: |
-            app/build/outputs/apk/compatible/release/${{ env.COMPATIBLE_APK_NAME }}
-
-      - name: 创建GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: "v${{ steps.build_info.outputs.version }}-${{ steps.build_info.outputs.timestamp }}"
-          body: ${{ env.RELEASE_NOTES }}
-          tag_name: ${{ env.TAG_NAME }}
-          files: |
-            app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk
-            app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk
-          token: ${{ secrets.GITHUB_TOKEN }}
+            ${{ env.COMPATIBLE_APK_PATH }}
