@@ -109,14 +109,17 @@ jobs:
           # 获取最近提交信息并生成Markdown链接
           if [ "$COMMIT_HASH" != "unknown" ]; then
             COMMIT_URL="https://github.com/${{ github.repository }}/commit/${COMMIT_HASH}"
+            FULL_COMMIT_MSG=$(git log -1 --pretty=%B HEAD)
             FULL_COMMIT_MSG="[${FULL_COMMIT_MSG}](${COMMIT_URL})"
+          else
+            FULL_COMMIT_MSG="未找到提交信息"
           fi
           
           # 使用更可靠的变量赋值方式
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE=${FULL_COMMIT_MSG}" >> $GITHUB_ENV
           
-          # 生成发布信息
+          # 生成发布信息（新增导出BUILD_TIME）
           BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
           cat <<EOR >> $GITHUB_ENV
           RELEASE_NOTES<<EOF
@@ -129,6 +132,8 @@ jobs:
           - 包含版本: Normal(Android 8.0+), Compatible(Android 5.1-7.0)
           EOF
           EOR
+          # 新增导出BUILD_TIME到环境变量
+          echo "BUILD_TIME=${BUILD_TIME}" >> $GITHUB_ENV
 
       - name: 创建GitHub Release
         uses: softprops/action-gh-release@v1
