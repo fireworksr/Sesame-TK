@@ -153,8 +153,6 @@ jobs:
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: |
-            
           document: |
             ${{ env.NORMAL_APK_PATH }}
 
@@ -163,7 +161,5 @@ jobs:
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: |
-            
           document: |
             ${{ env.COMPATIBLE_APK_PATH }}
