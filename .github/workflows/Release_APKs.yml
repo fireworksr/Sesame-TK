@@ -148,18 +148,14 @@ jobs:
             - 发布说明:
               ${{ env.RELEASE_NOTES }}
 
-      - name: 📦 上传Normal APK
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          document: |
-            ${{ env.NORMAL_APK_PATH }}
+      - name: 📦 上传Normal APK via curl
+        run: |
+          curl -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+               -F "document=@${{ env.NORMAL_APK_PATH }}" \
+               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
 
-      - name: 📦 上传兼容 APK
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          document: |
-            ${{ env.COMPATIBLE_APK_PATH }}
+      - name: 📦 上传兼容 APK via curl
+        run: |
+          curl -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+               -F "document=@${{ env.COMPATIBLE_APK_PATH }}" \
+               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
