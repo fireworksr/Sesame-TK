@@ -98,51 +98,33 @@ jobs:
           $(grep -oP 'val patch = \K\d+' app/build.gradle.kts)-\
           $(grep -oP 'val buildTag = "\K[^"]+' app/build.gradle.kts)
            BUILD_TIMESTAMP=$(date +"%m.%d.%H.%M.%S")
-          
-          # 构建APK文件名
-          NORMAL_APK_NAME="Sesame-TK-Normal-${VERSION_NAME}-${BUILD_TIMESTAMP}-release.apk"
-          COMPATIBLE_APK_NAME="Sesame-TK-Compatible-${VERSION_NAME}-${BUILD_TIMESTAMP}-release.apk"
-          
+ 
           echo "TAG_NAME=v${VERSION_NAME}_${BUILD_TIMESTAMP}" >> $GITHUB_ENV
           echo "version=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "timestamp=$BUILD_TIMESTAMP" >> $GITHUB_OUTPUT
 
-
       - name: 生成发布信息
         id: generate_release_info
         run: |
-          # 更健壮的获取COMMIT_HASH方式
           COMMIT_HASH=$(git rev-parse --short HEAD || echo "unknown")
-          
-          # 获取原始提交信息（保留换行符）
           RAW_COMMIT_MSG=$(git log -1 --pretty=format:"%B")
-          
-          # 提取提交主题（第一行）
           COMMIT_SUBJECT_TEMP=$(echo "$RAW_COMMIT_MSG" | sed -n '1p' | sed 's/"/\\"/g')
-
-          # 检查是否有扩展名且不含中文字符
           HAS_EXTENSION=$(echo "$COMMIT_SUBJECT_TEMP" | grep -E '\..+')
           HAS_CHINESE=$(echo "$COMMIT_SUBJECT_TEMP" | grep -qP '\p{Han}' && echo "yes" || echo "no")
-
           if [ -n "$HAS_EXTENSION" ] && [ "$HAS_CHINESE" = "no" ]; then
               COMMIT_SUBJECT="无详细主题"
           else
               COMMIT_SUBJECT="$COMMIT_SUBJECT_TEMP"
           fi
-
-          # 提取扩展描述（第二行开始）
           COMMIT_BODY=$(echo "$RAW_COMMIT_MSG" | sed -n '2,$p' | sed 's/"/\\"/g' | sed '/^$/d')
-          
-          # 添加构建者信息
           BUILDER=${{ github.actor }}
-          
-          # 使用更可靠的变量赋值方式
+
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_SUBJECT=${COMMIT_SUBJECT}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_BODY=${COMMIT_BODY}" >> $GITHUB_ENV
           echo "BUILDER=${BUILDER}" >> $GITHUB_ENV
 
-          # 生成发布信息（增加双引号包裹变量）
+          # 生成发布信息
           BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
           cat <<EOR >> $GITHUB_ENV
           RELEASE_NOTES<<EOF
@@ -152,9 +134,7 @@ jobs:
            描述: ${COMMIT_BODY:+}${COMMIT_BODY:-无详细描述}
            构建时间: ${BUILD_TIME}
            构建者: ${BUILDER}
-           包含版本: 
-              Normal(Android 8.0+)
-              Compatible(Android 5.1-7.0)
+           包含版本: Normal(Android 8.0+),Compatible(Android 5.1-7.0)
           EOF
           EOR
 
