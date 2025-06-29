@@ -146,8 +146,8 @@ jobs:
           BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
           cat <<EOR >> $GITHUB_ENV
           RELEASE_NOTES<<EOF
-           ##自动构建版本
-           ###提交详情: ${COMMIT_HASH}
+          ## 自动构建版本
+          ### 提交详情: ${COMMIT_HASH}
            主题: ${COMMIT_SUBJECT}
            描述: ${COMMIT_BODY:+}${COMMIT_BODY:-无详细描述}
            构建时间: ${BUILD_TIME}
