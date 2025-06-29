@@ -93,20 +93,20 @@ jobs:
       - name: 提取构建信息
         id: build_info
         run: |
-          # 从build.gradle提取versionName
-          VERSION_NAME=$(grep -oP 'val major = \K\d+' app/build.gradle.kts).$(grep -oP 'val minor = \K\d+' app/build.gradle.kts).$(grep -oP 'val patch = \K\d+' app/build.gradle.kts)-$(grep -oP 'val buildTag = "\K[^"]+' app/build.gradle.kts)
-          # 生成统一时间戳（固定格式确保唯一性）
-          BUILD_TIMESTAMP=$(date +"%m.%d.%H.%M.%S")
-          # 添加APK文件名提取
+          VERSION_NAME=$(grep -oP 'val major = \K\d+' app/build.gradle.kts).\
+          $(grep -oP 'val minor = \K\d+' app/build.gradle.kts).\
+          $(grep -oP 'val patch = \K\d+' app/build.gradle.kts)-\
+          $(grep -oP 'val buildTag = "\K[^"]+' app/build.gradle.kts)
+           BUILD_TIMESTAMP=$(date +"%m.%d.%H.%M.%S")
+          
+          # 构建APK文件名
           NORMAL_APK_NAME="Sesame-TK-Normal-${VERSION_NAME}-${BUILD_TIMESTAMP}-release.apk"
           COMPATIBLE_APK_NAME="Sesame-TK-Compatible-${VERSION_NAME}-${BUILD_TIMESTAMP}-release.apk"
           
           echo "TAG_NAME=v${VERSION_NAME}_${BUILD_TIMESTAMP}" >> $GITHUB_ENV
-          echo "APK_BUILD_TIME=${BUILD_TIMESTAMP}" >> $GITHUB_ENV  # 新增环境变量记录APK时间戳
           echo "version=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "timestamp=$BUILD_TIMESTAMP" >> $GITHUB_OUTPUT
-          echo "NORMAL_APK_NAME=${NORMAL_APK_NAME}" >> $GITHUB_ENV
-          echo "COMPATIBLE_APK_NAME=${COMPATIBLE_APK_NAME}" >> $GITHUB_ENV
+
 
       - name: 生成发布信息
         id: generate_release_info
@@ -137,20 +137,16 @@ jobs:
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_SUBJECT=${COMMIT_SUBJECT}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_BODY=${COMMIT_BODY}" >> $GITHUB_ENV
-          # 增加默认值防止空值
-          echo "BUILDER_USER=${GITHUB_ACTOR:-GitHub_User}" >> $GITHUB_ENV
-          
+
           # 生成发布信息（增加双引号包裹变量）
           BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
           cat <<EOR >> $GITHUB_ENV
           RELEASE_NOTES<<EOF
-           自动构建版本
-           提交详情: ${COMMIT_HASH}
+           ##自动构建版本
+           ###提交详情: ${COMMIT_HASH}
            主题: ${COMMIT_SUBJECT}
            描述: ${COMMIT_BODY:+}${COMMIT_BODY:-无详细描述}
-           构建者: "${BUILDER_USER}"
            构建时间: ${BUILD_TIME}
-           APK构建时间: \${APK_BUILD_TIME}  # 新增显示APK文件名中的时间戳
            包含版本: 
               Normal(Android 8.0+)
               Compatible(Android 5.1-7.0)
@@ -179,13 +175,11 @@ jobs:
              发布说明:
               ${{ env.RELEASE_NOTES }}
 
-      - name: 📦 上传Normal APK via curl
+      - name: 📦 上传APK via curl
         run: |
           curl -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
               -F "document=@\"${{ steps.extract_apks.outputs.signed_normal }}\"" \
               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
-      - name: 📦 上传兼容 APK via curl
-        run: |
           curl -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
               -F "document=@\"${{ steps.extract_apks.outputs.signed_compatible }}\"" \
               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
