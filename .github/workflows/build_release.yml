@@ -147,7 +147,7 @@ jobs:
            主题: ${COMMIT_SUBJECT}
            描述: ${COMMIT_BODY:+}${COMMIT_BODY:-无详细描述}
            构建者: $BUILDER_USER
-           构建时间: ${BUILD_TIME}.${BUILD_TIMESTAMP}
+           构建时间: ${BUILD_TIME}.${{ env.BUILD_TIMESTAMP }}
            包含版本: 
               Normal(Android 8.0+)
               Compatible(Android 5.1-7.0)
