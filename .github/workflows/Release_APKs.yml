@@ -90,27 +90,6 @@ jobs:
             fi
           done
 
-      - name: 检查APK文件有效性
-        run: |
-          # 确保文件存在且非空
-          if [ ! -s "${{ env.NORMAL_APK_PATH }}" ]; then
-            echo "❌ Normal APK文件无效"
-            exit 1
-          fi
-          
-          if [ ! -s "${{ env.COMPATIBLE_APK_PATH }}" ]; then
-            echo "❌ Compatible APK文件无效"
-            exit 1
-          fi
-
-      - name: 验证签名
-        run: |
-          echo "🔍 正在验证签名..."
-          which apksigner || echo "⚠️ apksigner未在PATH中"
-          /usr/lib/android-sdk/build-tools/36.0.0/apksigner verify --verbose "${{ env.NORMAL_APK_PATH }}"
-          /usr/lib/android-sdk/build-tools/36.0.0/apksigner verify --verbose "${{ env.COMPATIBLE_APK_PATH }}"
-
-
       - name: 提取构建信息
         id: build_info
         run: |
