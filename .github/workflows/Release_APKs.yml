@@ -53,6 +53,7 @@ jobs:
 
       - name: 签名APK
         run: |
+          buildToolsVersion: 36.0.0
           # 将Base64编码的keystore内容写入临时文件
           echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > /tmp/keystore.jks
           
