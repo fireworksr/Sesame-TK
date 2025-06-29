@@ -1,4 +1,4 @@
-name: Build and Release APKs
+name: 构建发布
 
 on:
   workflow_dispatch:
