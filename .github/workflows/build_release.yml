@@ -111,14 +111,21 @@ jobs:
         id: generate_release_info
         run: |
           # 更健壮的获取COMMIT_HASH方式
-          COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          COMMIT_HASH=$(git rev-parse --short HEAD || echo "unknown")
           
-          # 获取最近提交信息
-          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
+          # 获取原始提交信息（保留换行符）
+          RAW_COMMIT_MSG=$(git log -1 --pretty=format:"%B")
+          
+          # 提取提交主题（第一行）
+          COMMIT_SUBJECT=$(echo "$RAW_COMMIT_MSG" | sed -n '1p' | sed 's/"/\\"/g')
+          
+          # 提取扩展描述（第二行开始）
+          COMMIT_BODY=$(echo "$RAW_COMMIT_MSG" | sed -n '2,$p' | sed 's/"/\\"/g' | sed '/^$/d')
           
           # 使用更可靠的变量赋值方式
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
-          echo "COMMIT_MESSAGE=${FULL_COMMIT_MSG}" >> $GITHUB_ENV
+          echo "COMMIT_MESSAGE_SUBJECT=${COMMIT_SUBJECT}" >> $GITHUB_ENV
+          echo "COMMIT_MESSAGE_BODY=${COMMIT_BODY}" >> $GITHUB_ENV
           
           # 生成发布信息
           BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
@@ -126,7 +133,9 @@ jobs:
           RELEASE_NOTES<<EOF
           ## 自动构建版本
           ### 提交详情: 
-           ${COMMIT_HASH}${FULL_COMMIT_MSG}
+           ${COMMIT_HASH}
+           提交主题: ${COMMIT_SUBJECT}
+           扩展描述: ${COMMIT_BODY:+$'\n'}${COMMIT_BODY:-无详细描述}
            构建时间: ${BUILD_TIME}
            包含版本: 
               Normal(Android 8.0+)
