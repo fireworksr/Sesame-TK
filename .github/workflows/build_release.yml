@@ -117,32 +117,41 @@ jobs:
           RAW_COMMIT_MSG=$(git log -1 --pretty=format:"%B")
           
           # 提取提交主题（第一行）
-          COMMIT_SUBJECT=$(echo "$RAW_COMMIT_MSG" | sed -n '1p' | sed 's/"/\\"/g')
-          
+          COMMIT_SUBJECT_TEMP=$(echo "$RAW_COMMIT_MSG" | sed -n '1p' | sed 's/"/\\"/g')
+
+          # 检查是否有扩展名且不含中文字符
+          HAS_EXTENSION=$(echo "$COMMIT_SUBJECT_TEMP" | grep -E '\..+')
+          HAS_CHINESE=$(echo "$COMMIT_SUBJECT_TEMP" | grep -q '[一-龥]' && echo "yes" || echo "no")
+
+          if [ -n "$HAS_EXTENSION" ] && [ "$HAS_CHINESE" = "no" ]; then
+              COMMIT_SUBJECT="无详细描述"
+          else
+              COMMIT_SUBJECT="$COMMIT_SUBJECT_TEMP"
+          fi
+
           # 提取扩展描述（第二行开始）
           COMMIT_BODY=$(echo "$RAW_COMMIT_MSG" | sed -n '2,$p' | sed 's/"/\\"/g' | sed '/^$/d')
-          
-          # 新增：检查提交主题是否包含文件扩展名且不含中文
-          if [[ "$COMMIT_SUBJECT" =~ \.[a-zA-Z0-9]{1,4} ]] && ! [[ "$COMMIT_SUBJECT" =~ [\u4e00-\u9fff] ]]; then
-            COMMIT_SUBJECT="无详细描述"
-          fi
           
           # 使用更可靠的变量赋值方式
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_SUBJECT=${COMMIT_SUBJECT}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_BODY=${COMMIT_BODY}" >> $GITHUB_ENV
           
-          # 生成发布信息（使用多行echo代替多行重定向）
+          # 生成发布信息
           BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
-          echo "RELEASE_NOTES=## 自动构建版本" >> $GITHUB_ENV
-          echo "### 提交详情: " >> $GITHUB_ENV
-          echo " ${COMMIT_HASH}" >> $GITHUB_ENV
-          echo " 提交主题: ${COMMIT_SUBJECT}" >> $GITHUB_ENV
-          echo " 扩展描述: $(echo "${COMMIT_BODY:+$'\n'}${COMMIT_BODY:-无详细描述}" | sed 's/$/\\n/') " >> $GITHUB_ENV
-          echo " 构建时间: ${BUILD_TIME}" >> $GITHUB_ENV
-          echo " 包含版本: " >> $GITHUB_ENV
-          echo "    Normal(Android 8.0+)" >> $GITHUB_ENV
-          echo "    Compatible(Android 5.1-7.0)" >> $GITHUB_ENV
+          cat <<EOR >> $GITHUB_ENV
+          RELEASE_NOTES<<EOF
+          ## 自动构建版本
+          ### 提交详情: 
+           ${COMMIT_HASH}
+           提交主题: ${COMMIT_SUBJECT}
+           扩展描述: ${COMMIT_BODY:+$'\n'}${COMMIT_BODY:-无详细描述}
+           构建时间: ${BUILD_TIME}
+           包含版本: 
+              Normal(Android 8.0+)
+              Compatible(Android 5.1-7.0)
+          EOF
+          EOR
 
       - name: 创建GitHub Release
         uses: softprops/action-gh-release@v1
