@@ -125,10 +125,11 @@ jobs:
           cat <<EOR >> $GITHUB_ENV
           RELEASE_NOTES<<EOF
           ## 自动构建版本
-          ### 提交详情: ${COMMIT_HASH}  
-          ${FULL_COMMIT_MSG}
+          ### 提交详情: 
+           ${COMMIT_HASH}${FULL_COMMIT_MSG}
            构建时间: ${BUILD_TIME}
-           包含版本: Normal(Android 8.0+)
+           包含版本: 
+              Normal(Android 8.0+)
               Compatible(Android 5.1-7.0)
           EOF
           EOR
@@ -152,7 +153,6 @@ jobs:
           message: |
             🚀 新版本发布！
              标签: ${{ env.TAG_NAME }}
-             构建时间: ${{ env.BUILD_TIME }}
              发布说明:
               ${{ env.RELEASE_NOTES }}
        # 修改上传 Normal APK 的步骤
