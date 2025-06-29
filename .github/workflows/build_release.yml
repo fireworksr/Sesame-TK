@@ -122,6 +122,11 @@ jobs:
           # 提取扩展描述（第二行开始）
           COMMIT_BODY=$(echo "$RAW_COMMIT_MSG" | sed -n '2,$p' | sed 's/"/\\"/g' | sed '/^$/d')
           
+          # 新增：检查提交主题是否包含文件扩展名且不含中文
+          if [[ "$COMMIT_SUBJECT" =~ \.[a-zA-Z0-9]{1,4} ]] && ! [[ "$COMMIT_SUBJECT" =~ [\u4e00-\u9fff] ]]; then
+            COMMIT_SUBJECT="无详细描述"
+          fi
+          
           # 使用更可靠的变量赋值方式
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_SUBJECT=${COMMIT_SUBJECT}" >> $GITHUB_ENV
@@ -130,7 +135,6 @@ jobs:
           # 生成发布信息
           BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
           cat <<EOR >> $GITHUB_ENV
-          RELEASE_NOTES<<EOF
           ## 自动构建版本
           ### 提交详情: 
            ${COMMIT_HASH}
