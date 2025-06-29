@@ -136,16 +136,18 @@ jobs:
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_SUBJECT=${COMMIT_SUBJECT}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_BODY=${COMMIT_BODY}" >> $GITHUB_ENV
+          echo "BUILDER_USER=${GITHUB_ACTOR}" >> $GITHUB_ENV
           
           # 生成发布信息
-          BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')
+          BUILD_TIME=$(date +'%Y')
           cat <<EOR >> $GITHUB_ENV
           RELEASE_NOTES<<EOF
-          ## 自动构建版本
+           自动构建版本
            提交详情: ${COMMIT_HASH}
            主题: ${COMMIT_SUBJECT}
            描述: ${COMMIT_BODY:+}${COMMIT_BODY:-无详细描述}
-           构建时间: ${BUILD_TIME}
+           构建者: $BUILDER_USER
+           构建时间: ${BUILD_TIME}.${BUILD_TIMESTAMP}
            包含版本: 
               Normal(Android 8.0+)
               Compatible(Android 5.1-7.0)
