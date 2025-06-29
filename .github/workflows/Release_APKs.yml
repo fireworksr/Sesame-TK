@@ -106,8 +106,10 @@ jobs:
       - name: 验证签名
         run: |
           echo "🔍 正在验证签名..."
-          apksigner verify --verbose "${{ env.NORMAL_APK_PATH }}"
-          apksigner verify --verbose "${{ env.COMPATIBLE_APK_PATH }}"
+          which apksigner || echo "⚠️ apksigner未在PATH中"
+          /usr/lib/android-sdk/build-tools/34.0.0/apksigner verify --verbose "${{ env.NORMAL_APK_PATH }}"
+          /usr/lib/android-sdk/build-tools/34.0.0/apksigner verify --verbose "${{ env.COMPATIBLE_APK_PATH }}"
+
 
       - name: 提取构建信息
         id: build_info
