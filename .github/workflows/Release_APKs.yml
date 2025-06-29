@@ -73,6 +73,29 @@ jobs:
           
           wait # 等待所有签名任务完成
 
+      - name: 验证APK签名
+        run: |
+          # 验证Normal APK签名
+          apksigner verify --verbose ${{ env.NORMAL_APK_PATH }} || { echo "❌ Normal APK签名验证失败"; exit 1; }
+          
+          # 验证Compatible APK签名
+          apksigner verify --verbose ${{ env.COMPATIBLE_APK_PATH }} || { echo "❌ Compatible APK签名验证失败"; exit 1; }
+          
+          echo "✅ 签名验证通过"
+
+      - name: 检查APK文件有效性
+        run: |
+          # 确保文件存在且非空
+          if [ ! -s "${{ env.NORMAL_APK_PATH }}" ]; then
+            echo "❌ Normal APK文件无效"
+            exit 1
+          fi
+          
+          if [ ! -s "${{ env.COMPATIBLE_APK_PATH }}" ]; then
+            echo "❌ Compatible APK文件无效"
+            exit 1
+          fi
+
       - name: 获取签名后的Normal APK路径
         run: |
           NORMAL_APK_PATH=$(ls app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk | head -n 1)
@@ -107,8 +130,7 @@ jobs:
           COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
           
           # 获取最近提交信息
-          #FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
-          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | tail -n +2 | sed 's/"/\\"/g' | tr '\n' ' ')
+          FULL_COMMIT_MSG=$(git log -1 --pretty=format:"%B" | sed 's/"/\\"/g' | tr '\n' ' ')
           
           # 使用更可靠的变量赋值方式
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
