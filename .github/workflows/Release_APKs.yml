@@ -51,38 +51,44 @@ jobs:
           --build-cache \
           --no-daemon
 
-      - name: 签名APK
+      - name: 找到apk并设置输出
+        id: locate_apks
         run: |
-          buildToolsVersion: 36.0.0
-          # 将Base64编码的keystore内容写入临时文件
-          echo "${{ secrets.ANDROID_SIGNING_KEY }}" | base64 --decode > /tmp/keystore.jks
-          
-          # 并行签名两个APK
-          (jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-            -keystore /tmp/keystore.jks \
-            -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
-            -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
-            app/build/outputs/apk/normal/release/*.apk \
-            ${{ secrets.ANDROID_KEY_ALIAS }} ) &
-          
-          (jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-            -keystore /tmp/keystore.jks \
-            -storepass ${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
-            -keypass ${{ secrets.ANDROID_KEY_PASSWORD }} \
-            app/build/outputs/apk/compatible/release/*.apk \
-            ${{ secrets.ANDROID_KEY_ALIAS }} ) &
-          
-          wait # 等待所有签名任务完成
+          normal_apk=$(find app/build/outputs/apk/normal/release -name "*.apk" | head -n 1)
+          compatible_apk=$(find app/build/outputs/apk/compatible/release -name "*.apk" | head -n 1)
+          echo "normal_apk=$normal_apk" >> $GITHUB_OUTPUT
+          echo "compatible_apk=$compatible_apk" >> $GITHUB_OUTPUT
 
-      - name: 验证APK签名
+      - name: 将apk复制到暂存区进行签名
         run: |
-          # 验证Normal APK签名
-          apksigner verify --verbose ${{ env.NORMAL_APK_PATH }} || { echo "❌ Normal APK签名验证失败"; exit 1; }
-          
-          # 验证Compatible APK签名
-          apksigner verify --verbose ${{ env.COMPATIBLE_APK_PATH }} || { echo "❌ Compatible APK签名验证失败"; exit 1; }
-          
-          echo "✅ 签名验证通过"
+          mkdir -p app/build/outputs/apk/all
+          cp "${{ steps.locate_apks.outputs.normal_apk }}" app/build/outputs/apk/all/
+          cp "${{ steps.locate_apks.outputs.compatible_apk }}" app/build/outputs/apk/all/
+
+      - name: 签名apk
+        id: sign_apks
+        uses: ilharp/sign-android-release@v2
+        with:
+          releaseDir: app/build/outputs/apk/all
+          signingKey: ${{ secrets.ANDROID_SIGNING_KEY }}
+          keyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          buildToolsVersion: 36.0.0
+
+      - name: 提取已签名的apk路径
+        id: extract_apks
+        run: |
+          IFS=':' read -r -a files <<< "${{ steps.sign_apks.outputs.signedFiles }}"
+          for file in "${files[@]}"; do
+            if [[ "$file" == *Normal* ]]; then
+              echo "signed_normal=$file" >> $GITHUB_OUTPUT
+              echo "NORMAL_APK_PATH=$file" >> $GITHUB_ENV  # 新增环境变量赋值
+            elif [[ "$file" == *Compatible* ]]; then
+              echo "signed_compatible=$file" >> $GITHUB_OUTPUT
+              echo "COMPATIBLE_APK_PATH=$file" >> $GITHUB_ENV  # 新增环境变量赋值
+            fi
+          done
 
       - name: 检查APK文件有效性
         run: |
@@ -97,15 +103,11 @@ jobs:
             exit 1
           fi
 
-      - name: 获取签名后的Normal APK路径
+      - name: 验证签名
         run: |
-          NORMAL_APK_PATH=$(ls app/build/outputs/apk/normal/release/Sesame-TK-Normal-*.apk | head -n 1)
-          echo "NORMAL_APK_PATH=${NORMAL_APK_PATH}" >> $GITHUB_ENV
-
-      - name: 获取签名后的Compatible APK路径
-        run: |
-          COMPATIBLE_APK_PATH=$(ls app/build/outputs/apk/compatible/release/Sesame-TK-Compatible-*.apk | head -n 1)
-          echo "COMPATIBLE_APK_PATH=${COMPATIBLE_APK_PATH}" >> $GITHUB_ENV
+          echo "🔍 正在验证签名..."
+          apksigner verify --verbose "${{ env.NORMAL_APK_PATH }}"
+          apksigner verify --verbose "${{ env.COMPATIBLE_APK_PATH }}"
 
       - name: 提取构建信息
         id: build_info
@@ -175,11 +177,11 @@ jobs:
       - name: 📦 上传Normal APK via curl
         run: |
           curl -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-               -F "document=@${{ env.NORMAL_APK_PATH }}" \
+               -F "document=@${{ steps.extract_apks.outputs.signed_normal }}" \  # 使用步骤输出变量
                "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
 
       - name: 📦 上传兼容 APK via curl
         run: |
           curl -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-               -F "document=@${{ env.COMPATIBLE_APK_PATH }}" \
+               -F "document=@${{ steps.extract_apks.outputs.signed_compatible }}" \  # 使用步骤输出变量
                "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument"
