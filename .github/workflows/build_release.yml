@@ -106,23 +106,15 @@ jobs:
       - name: 生成发布信息
         id: generate_release_info
         run: |
-          # 使用双引号包裹命令替换，避免特殊字符解析问题
-          COMMIT_HASH="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-          RAW_COMMIT_MSG="$(git log -10 --pretty=format:'%B')"
-          COMMIT_SUBJECT_TEMP="$(echo "$RAW_COMMIT_MSG" | sed -n '1p' | sed 's/\"/\\"/g')"
-          HAS_EXTENSION="$(echo "$COMMIT_SUBJECT_TEMP" | grep -E '\..+')"
-          HAS_CHINESE="$(echo "$COMMIT_SUBJECT_TEMP" | grep -qP '\p{Han}' && echo "yes" || echo "no")"
-          if [ -n "$HAS_EXTENSION" ] && [ "$HAS_CHINESE" = "no" ]; then
-              COMMIT_SUBJECT="无详细主题"
-          else
-              COMMIT_SUBJECT="$COMMIT_SUBJECT_TEMP"
-          fi
-          COMMIT_BODY="$(echo "$RAW_COMMIT_MSG" | sed -n '2,$p' | sed 's/\"/\\"/g' | sed '/^$/d')"
-          BUILDER="${{ github.event_name == 'workflow_dispatch' && github.actor || '自动构建' }}"
-
+          COMMIT_HASH=$(git rev-parse --short HEAD || echo "unknown")
+          # 修改为获取最近10条提交信息
+          RAW_COMMIT_MSG=$(git log -10 --pretty=format:"%H%n%P%n%s%n%b" | sed 's/"/\\"/g')
+          # 拆分每条提交信息
+          IFS=$'\n' read -d '' -r -a COMMITS <<< "$RAW_COMMIT_MSG"
+          
+          BUILDER=${{ github.event_name == 'workflow_dispatch' && github.actor || '自动构建' }}
+          
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
-          echo "COMMIT_MESSAGE_SUBJECT=${COMMIT_SUBJECT}" >> $GITHUB_ENV
-          echo "COMMIT_MESSAGE_BODY=${COMMIT_BODY}" >> $GITHUB_ENV
           echo "BUILDER=${BUILDER}" >> $GITHUB_ENV
 
           # 生成发布信息
@@ -131,8 +123,13 @@ jobs:
           RELEASE_NOTES<<EOF
           ## 自动构建版本
           ### 提交详情: ${COMMIT_HASH}
-           主题: ${COMMIT_SUBJECT}
-           描述: ${COMMIT_BODY:+}${COMMIT_BODY:-无详细描述}
+           包含最近10条提交:
+          $(for ((i=0; i<${#COMMITS[@]}; i+=4)); do
+            echo "-----------"
+            echo "提交Hash: ${COMMITS[i]}"
+            echo "主题: ${COMMITS[i+2]}"
+            echo "描述: ${COMMITS[i+3]:-无详细描述}"
+          done)
            构建时间: ${BUILD_TIME}
            构建者: ${BUILDER}
            包含版本: Normal(Android 8.0+),Compatible(Android 5.1-7.0)
