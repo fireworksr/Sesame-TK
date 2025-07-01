@@ -106,18 +106,19 @@ jobs:
       - name: 生成发布信息
         id: generate_release_info
         run: |
-          COMMIT_HASH=$(git rev-parse --short HEAD || echo "unknown")
-          RAW_COMMIT_MSG=$(git log -6 --pretty=format:"%B")
-          COMMIT_SUBJECT_TEMP=$(echo "$RAW_COMMIT_MSG" | sed -n '1p' | sed 's/"/\\"/g')
-          HAS_EXTENSION=$(echo "$COMMIT_SUBJECT_TEMP" | grep -E '\..+')
-          HAS_CHINESE=$(echo "$COMMIT_SUBJECT_TEMP" | grep -qP '\p{Han}' && echo "yes" || echo "no")
+          # 使用双引号包裹命令替换，避免特殊字符解析问题
+          COMMIT_HASH="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          RAW_COMMIT_MSG="$(git log -1 --pretty=format:'%B')"
+          COMMIT_SUBJECT_TEMP="$(echo "$RAW_COMMIT_MSG" | sed -n '1p' | sed 's/\"/\\"/g')"
+          HAS_EXTENSION="$(echo "$COMMIT_SUBJECT_TEMP" | grep -E '\..+')"
+          HAS_CHINESE="$(echo "$COMMIT_SUBJECT_TEMP" | grep -qP '\p{Han}' && echo "yes" || echo "no")"
           if [ -n "$HAS_EXTENSION" ] && [ "$HAS_CHINESE" = "no" ]; then
               COMMIT_SUBJECT="无详细主题"
           else
               COMMIT_SUBJECT="$COMMIT_SUBJECT_TEMP"
           fi
-          COMMIT_BODY=$(echo "$RAW_COMMIT_MSG" | sed -n '2,$p' | sed 's/"/\\"/g' | sed '/^$/d')
-          BUILDER=${{ github.actor }}
+          COMMIT_BODY="$(echo "$RAW_COMMIT_MSG" | sed -n '2,$p' | sed 's/\"/\\"/g' | sed '/^$/d')"
+          BUILDER="${{ github.event_name == 'workflow_dispatch' && github.actor || '自动构建' }}"
 
           echo "COMMIT_HASH=${COMMIT_HASH}" >> $GITHUB_ENV
           echo "COMMIT_MESSAGE_SUBJECT=${COMMIT_SUBJECT}" >> $GITHUB_ENV
