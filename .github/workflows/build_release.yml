@@ -108,7 +108,7 @@ jobs:
         run: |
           # 使用双引号包裹命令替换，避免特殊字符解析问题
           COMMIT_HASH="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-          RAW_COMMIT_MSG="$(git log -1 --pretty=format:'%B')"
+          RAW_COMMIT_MSG="$(git log -10 --pretty=format:'%B')"
           COMMIT_SUBJECT_TEMP="$(echo "$RAW_COMMIT_MSG" | sed -n '1p' | sed 's/\"/\\"/g')"
           HAS_EXTENSION="$(echo "$COMMIT_SUBJECT_TEMP" | grep -E '\..+')"
           HAS_CHINESE="$(echo "$COMMIT_SUBJECT_TEMP" | grep -qP '\p{Han}' && echo "yes" || echo "no")"
