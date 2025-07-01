@@ -10,16 +10,11 @@ class ModuleHttpServer(
     port: Int = 8080,
     secretToken: String = ""
 ) : NanoHTTPD("0.0.0.0", port) {
-    private val tag = "ModuleHttpServer"
 
     companion object {
         const val MIME_PLAINTEXT = "text/plain"
     }
-
     private val routes = mutableMapOf<String, HttpHandler>()
-    private val pathDescriptions = mapOf(
-        "/debugHandler" to "调试接口",
-    )
 
     init {
         // 后续新增接口只需在这里注册即可
@@ -28,7 +23,7 @@ class ModuleHttpServer(
     }
 
     private fun register(path: String, handler: HttpHandler) {
-        Log.runtime(tag, "Registering handler : $pathDescriptions[$path]")
+        Log.runtime("Registering handler : $path")
         routes[path] = handler
     }
 

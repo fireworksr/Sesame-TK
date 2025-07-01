@@ -206,18 +206,13 @@ data object AntFarmFamily {
                     val groupId = animal.getString("groupId")
                     val farmId = animal.getString("farmId")
                     val userId = animal.getString("userId")
-                    if (UserMap.getUserIdSet().contains(userId)) {
-                        if (Status.hasFlagToday("farm::feedFriendLimit")) {
-                            Log.runtime("今日喂鸡次数已达上限🥣 家庭喂")
-                            return
-                        }
-                        val jo = JSONObject(AntFarmRpcCall.feedFriendAnimal(farmId, groupId))
-                        if (ResChecker.checkRes(TAG, jo)) {
-                            Log.farm("家庭任务🏠帮喂好友🥣[" + UserMap.getMaskName(userId) + "]的小鸡180g #剩余" + jo.getInt("foodStock") + "g")
-                        }
-                    } else {
-                        Log.error(TAG, "$userId 不是你的好友！ 跳过家庭喂食")
+                    if (!UserMap.getUserIdSet().contains(userId)) {
+                        Log.error(TAG, "$userId 不是你的好友！")
                         continue
+                    }
+                    val jo = JSONObject(AntFarmRpcCall.feedFriendAnimal(farmId, groupId))
+                    if (ResChecker.checkRes(TAG, jo)) {
+                        Log.farm("家庭任务🏠帮喂好友🥣[" + UserMap.getMaskName(userId) + "]的小鸡180g #剩余" + jo.getInt("foodStock") + "g")
                     }
                 }
             }
@@ -246,9 +241,8 @@ data object AntFarmFamily {
                 for (i in 0..<familyInteractActions.length()) {
                     val familyInteractAction = familyInteractActions.getJSONObject(i)
                     if ("EatTogether" == familyInteractAction.optString("familyInteractType")) {
-                        val endTime = familyInteractAction.optLong("interactEndTime", 0)
-                        val gaptime = endTime - System.currentTimeMillis()
-                        Log.record("正在吃..${formatDuration(gaptime)} 吃完")
+                        var gaptime = familyInteractAction.optLong("interactEndTime", 0) - System.currentTimeMillis()
+                        Log.record("正在吃..${formatTimeDifference(gaptime)} 吃完")
                         return
                     }
                 }
@@ -388,35 +382,25 @@ data object AntFarmFamily {
             if (Status.hasFlagToday("antFarm::familyShareToFriends")) {
                 return
             }
-
             val familyValue: MutableSet<String?> = notInviteList.value
             val allUser: List<AlipayUser> = AlipayUser.getList()
-
-            if (allUser.isEmpty()) {
-                Log.error(TAG, "allUser is empty")
+            if (familyValue.isEmpty() || allUser.isEmpty()) {
+                Log.error(TAG, "notInviteList or allUser is empty")
                 return
             }
-
-            // 打乱顺序，实现随机选取
-            val shuffledUsers = allUser.shuffled()
-
             val inviteList = JSONArray()
-            for (u in shuffledUsers) {
-                if (!familyUserIds.contains(u.id) && !familyValue.contains(u.id)) {
-                    inviteList.put(u.id)
-                    if (inviteList.length() >= 6) {
-                        break
-                    }
+            for (u in allUser) {
+                if (
+                    !familyUserIds.contains(u.id)
+                    && !familyValue.contains(u.id)
+                    && inviteList.length() < 6
+                ) {
+                    inviteList.put(u)
+                }
+                if (inviteList.length() >= 6) {
+                    break
                 }
             }
-
-            if (inviteList.length() == 0) {
-                Log.error(TAG, "没有符合分享条件的好友")
-                return
-            }
-
-            Log.runtime(TAG, "inviteList: $inviteList")
-
             val jo = JSONObject(AntFarmRpcCall.inviteFriendVisitFamily(inviteList))
             if (ResChecker.checkRes(TAG, jo)) {
                 Log.farm("家庭任务🏠分享好友")
@@ -430,11 +414,12 @@ data object AntFarmFamily {
 
     /**
      * 通用时间差格式化（自动区分过去/未来）
-     * @param diffMillis 任意时间戳（毫秒）
+     * @param targetTimeMillis 任意时间戳（毫秒）
      * @return 易读字符串，如 "刚刚", "5分钟后", "3天前"
      */
-    fun formatDuration(diffMillis: Long): String {
-        val absSeconds = abs(diffMillis) / 1000
+    fun formatTimeDifference(targetTimeMillis: Long): String {
+        val diff = targetTimeMillis - System.currentTimeMillis()
+        val absSeconds = abs(diff) / 1000
 
         val (value, unit) = when {
             absSeconds < 60 -> Pair(absSeconds, "秒")
@@ -447,8 +432,8 @@ data object AntFarmFamily {
 
         return when {
             absSeconds < 1 -> "刚刚"
-            diffMillis > 0 -> "$value$unit 后"
-            else -> "$value$unit 前"
+            diff > 0 -> "$value$unit 后"  // 英文双引号
+            else -> "$value$unit 前"      // 英文双引号
         }
     }
 

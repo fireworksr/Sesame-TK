@@ -1,0 +1,291 @@
+name: Sync Upstream and Release
+
+on:
+  schedule:
+    - cron: "0 0/4 * * *"
+  push:
+    branches: ["develop", "main"]
+  pull_request:
+    branches: ["develop"]
+  release:
+    types: [published]
+  workflow_dispatch:
+  repository_dispatch:
+    types:
+      - sync_update
+
+jobs:
+  sync-upstream:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: hourly-sync
+      cancel-in-progress: true
+    outputs:
+      merge_succeeded: ${{ steps.merge_upstream.conclusion == 'success' }}
+      has_non_workflow_changes: ${{ steps.merge_upstream.outputs.has_non_workflow_changes }}
+    permissions:
+      contents: write
+      pull-requests: write  # 添加 PR 创建权限
+      actions: write  # 正确的工作流管理权限
+
+    steps:
+      - name: 设置时区
+        run: sudo timedatectl set-timezone Asia/Shanghai
+
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 配置Git用户
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: 获取远程仓库信息
+        run: |
+          git remote add upstream https://github.com/Fansirsqi/Sesame-TK.git || true
+          git fetch upstream
+
+      - name: 检查并合并上游更新
+        id: merge_upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 检查分支差异
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse upstream/main)
+          BASE=$(git merge-base $LOCAL $REMOTE)
+          LOCAL_AHEAD=$(git rev-list --count $BASE..$LOCAL)
+          REMOTE_AHEAD=$(git rev-list --count $BASE..$REMOTE)
+
+          echo "=== 分支差异详情 ==="
+          echo "本地提交: $LOCAL"
+          echo "上游提交: $REMOTE"
+          echo "共同祖先: $BASE"
+          echo "本地领先: $LOCAL_AHEAD 个提交"
+          echo "上游领先: $REMOTE_AHEAD 个提交"
+          echo "=== 差异文件列表 ==="
+          git diff $LOCAL $REMOTE --name-only
+
+          # 判断是否需要更新
+          if [ "$LOCAL_AHEAD" -gt "0" ] && [ "$REMOTE_AHEAD" -gt "0" ]; then
+            has_update=true
+          elif [ "$REMOTE_AHEAD" -gt "0" ]; then
+            has_update=true
+          else
+            has_update=false
+          fi
+          echo "has_update=$has_update" >> $GITHUB_OUTPUT
+          echo "has_update=$has_update" >> $GITHUB_ENV
+          
+          # 合并上游更新
+          if [ "$has_update" == 'true' ]; then  # 外层已判断上游有更新
+            git fetch upstream main && git fetch origin main || exit 1
+            git branch -D temp-merge-branch 2>/dev/null || true
+            git checkout -b temp-merge-branch
+            # 拉取最新代码并变基，确保本地分支最新
+            if ! git pull origin main --rebase; then
+              echo "merge_succeeded=false" >> $GITHUB_OUTPUT
+              echo "=== 拉取代码失败 ==="
+              git status
+              exit 1
+            fi
+            
+            # 执行合并并检查结果
+            echo "=== 开始合并上游代码 ==="
+            ##if git merge upstream/main --no-commit --no-ff -X ours; then
+            if git merge upstream/main --no-commit --no-ff; then
+              echo "merge_succeeded=true" >> $GITHUB_OUTPUT
+              echo "=== 合并成功，变更文件列表 ==="
+              git diff --name-only
+              # 撤销工作流文件变更（避免需要workflows权限）
+              git checkout -- .github/workflows/
+              # 新增：重置暂存区，确保工作流文件变更不被提交
+              git reset HEAD .github/workflows/
+              # 添加提交步骤（此时不包含工作流文件变更）
+              git commit -m "Merge upstream changes (excluding workflow files)"
+                # 检查是否有非工作流文件的变更
+              NON_WORKFLOW_CHANGES=$(git diff --name-only $BASE..$REMOTE | grep -v '^\.github/workflows/' | wc -l)
+              if [ $NON_WORKFLOW_CHANGES -gt 0 ]; then
+                echo "has_non_workflow_changes=true" >> $GITHUB_OUTPUT
+              else
+                echo "has_non_workflow_changes=false" >> $GITHUB_OUTPUT
+              fi
+              # 推送合并结果
+              git push origin temp-merge-branch:main
+            else
+              echo "merge_succeeded=false" >> $GITHUB_OUTPUT
+              echo "=== 合并失败详情 ==="
+              git status
+              git diff
+              exit 1
+            fi
+          else
+            # 上游无更新时直接标记无变更
+            echo "=== 上游无更新 ==="
+            echo "merge_succeeded=false" >> $GITHUB_OUTPUT
+            echo "has_non_workflow_changes=false" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: false
+
+  build-and-release:
+    needs: sync-upstream
+    runs-on: ubuntu-latest
+    if: needs.sync-upstream.outputs.merge_succeeded == 'true' && needs.sync-upstream.outputs.has_non_workflow_changes == 'true'
+
+    steps:
+      - name: 设置时区为亚洲/上海
+        run: |
+          sudo timedatectl set-timezone Asia/Shanghai
+          echo "当前时间: $(date)"
+
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 配置JDK环境
+        uses: actions/setup-java@v4
+        with:
+          java-version: "23"
+          distribution: "zulu"
+          cache: gradle
+
+      - name: 配置Gradle环境
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+          gradle-version: wrapper
+
+      - name: 授予gradlew执行权限
+        run: chmod +x gradlew
+
+      - name: 使用Gradle构建
+        run: ./gradlew assembleNormalRelease assembleCompatibleRelease -Pversion=${{ github.ref_name }} --parallel
+
+      - name: 定位APK文件并设置输出
+        id: locate_apks
+        run: |
+          normal_apk=$(find app/build/outputs/apk/normal/release -name "*.apk" | head -n 1)
+          compatible_apk=$(find app/build/outputs/apk/compatible/release -name "*.apk" | head -n 1)
+          echo "normal_apk=$normal_apk" >> $GITHUB_OUTPUT
+          echo "compatible_apk=$compatible_apk" >> $GITHUB_OUTPUT
+
+      - name: 准备签名目录并复制APK
+        run: |
+          # 创建APK合并目录
+          mkdir -p app/build/outputs/apk/all
+          # 复制Normal版本APK
+          cp ${{ steps.locate_apks.outputs.normal_apk }} app/build/outputs/apk/all/
+          # 复制Compatible版本APK
+          cp ${{ steps.locate_apks.outputs.compatible_apk }} app/build/outputs/apk/all/
+
+      - name: 签名APK文件
+        id: sign_apks
+        uses: ilharp/sign-android-release@v2
+        with:
+          releaseDir: app/build/outputs/apk/all
+          signingKey: ${{ secrets.ANDROID_SIGNING_KEY }}
+          keyAlias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          buildToolsVersion: 36.0.0
+          
+      - name: 提取已签名APK路径
+        id: extract_apks
+        run: |
+          IFS=':' read -r -a files <<< "${{ steps.sign_apks.outputs.signedFiles }}"
+          for file in "${files[@]}"; do
+            if [[ "$file" == *Normal* ]]; then
+              echo "signed_normal=$file" >> $GITHUB_OUTPUT
+              echo "找到Normal APK: $file"
+            elif [[ "$file" == *Compatible* ]]; then
+              echo "signed_compatible=$file" >> $GITHUB_OUTPUT
+              echo "找到Compatible APK: $file"
+            fi
+          done
+          # 添加调试输出以验证变量是否被正确设置
+          echo "签名文件列表: ${{ steps.sign_apks.outputs.signedFiles }}"
+
+      - name: 生成APK校验和
+        run: |
+          sha256sum ${{ steps.extract_apks.outputs.signed_normal }} > CHECKSUMS-Sesame-Normal-${{ steps.extract_info.outputs.version }}.${{ env.SHORT_SHA }}-signed.apk.sha256
+          sha256sum ${{ steps.extract_apks.outputs.signed_compatible }} > CHECKSUMS-Sesame-Compatible-${{ steps.extract_info.outputs.version }}.${{ env.SHORT_SHA }}-signed.apk.sha256
+
+      - name: 查找有效提交以生成通知
+        id: find_valid_commit
+        run: |
+          # 使用git log一次性获取最近10次提交记录
+          # 格式: 提交哈希<分隔符>修改文件列表
+          COMMITS=$(git log -n 10 --pretty=format:"%H<COMMIT_SEP>" --name-only ${{ github.sha }})
+
+          # 查找第一个不只修改工作流文件的提交
+          VALID_COMMIT=$(echo "$COMMITS" | awk -v RS="<COMMIT_SEP>" '{
+            if (NF == 0) next;  # 跳过空记录
+            hash=$1; files=substr($0, length(hash)+2);
+            if (files !~ /^\.github\/workflows\/sync-and-release\.yml$/ || NF > 1) {
+              print hash; exit;
+            }
+          }')
+
+          # 确定最终使用的提交哈希
+          COMMIT_HASH=${VALID_COMMIT:-${{ github.sha }}}
+          SHORT_COMMIT_HASH=$(echo "$COMMIT_HASH" | cut -c1-8)
+
+          # 设置输出变量
+          echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "SHORT_COMMIT_HASH=$SHORT_COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "SHORT_SHA=$SHORT_COMMIT_HASH" >> $GITHUB_ENV
+
+          echo "使用的提交哈希: $COMMIT_HASH (短哈希: $SHORT_COMMIT_HASH)"
+
+      - name: 提取版本信息
+        id: extract_info
+        run: |
+          # 从build.gradle.kts提取版本号组件
+          MAJOR=$(grep -oP 'val major = \K\d+' app/build.gradle.kts)
+          MINOR=$(grep -oP 'val minor = \K\d+' app/build.gradle.kts)
+          PATCH=$(grep -oP 'val patch = \K\d+' app/build.gradle.kts)
+          BUILD_TAG=$(grep -oP 'val buildTag = "\K[^"]+' app/build.gradle.kts)
+          
+          # 组合完整版本号
+          VERSION="$MAJOR.$MINOR.$PATCH-$BUILD_TAG"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "提取到版本号: $VERSION"
+
+      - name: 从版本创建标签
+        if: (startsWith(github.ref, 'refs/heads/main') && github.event_name == 'push') || github.event_name == 'release'
+        run: |
+          VERSION_TAG="v${{ steps.extract_info.outputs.VERSION }}"
+          echo "创建标签: $VERSION_TAG"
+          # 检查标签是否已存在，如果存在则跳过
+          if git rev-parse "$VERSION_TAG" >/dev/null 2>&1; then
+            echo "标签 $VERSION_TAG 已存在，跳过创建"
+          else
+            git tag "$VERSION_TAG"
+            git push origin "$VERSION_TAG"
+          fi
+
+      - name: 上传发布资产
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.event.release.tag_name || format('v{0}', steps.extract_info.outputs.VERSION) }}
+          tag_name: ${{ github.event.release.tag_name || format('v{0}', steps.extract_info.outputs.VERSION) }}
+          body: |
+            📦 *New Version ${{ github.ref_name }} Build!*
+            (Commit: [${{ env.SHORT_SHA }}](https://github.com/${{ github.repository }}/commit/${{ steps.find_valid_commit.outputs.COMMIT_HASH || github.sha }}))
+
+            *下载说明:*
+              * Normal 为正常版本,适用于`Android 8.0`及以上的系统。
+              * Compatible 为兼容版本,适用于`Android 7.0`及以下的系统,最低支持`Android 5.1`
+          files: |
+            ${{ steps.extract_apks.outputs.signed_compatible }}
+            ${{ steps.extract_apks.outputs.signed_normal }}
+            CHECKSUMS-Sesame-Normal-${{ steps.extract_info.outputs.version }}.${{ env.SHORT_SHA }}-signed.apk.sha256
+            CHECKSUMS-Sesame-Compatible-${{ steps.extract_info.outputs.version }}.${{ env.SHORT_SHA }}-signed.apk.sha256
+            # 使用带v前缀的标签名称,与创建标签步骤保持一致
+            tag_name: ${{ github.event.release.tag_name || format('v{0}', steps.extract_info.outputs.version) }}
+            draft: false
+            prerelease: false
+            generate_release_notes: true
