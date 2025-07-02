@@ -31,11 +31,13 @@ jobs:
           echo "!.github/workflows" >> .git/info/sparse-checkout
           git read-tree -mu HEAD
 
-      # 步骤3：检查是否有新提交
+      # 步骤3：检查是否有新提交（优化比较逻辑）
       - name: Check for new commits
         id: check-commits
         run: |
-          if git diff --quiet HEAD upstream/main; then
+          LOCAL_COMMIT=$(git rev-parse HEAD)
+          UPSTREAM_COMMIT=$(git rev-parse upstream/main)
+          if [ "$LOCAL_COMMIT" = "$UPSTREAM_COMMIT" ]; then
             echo "has_new_commits=false" >> $GITHUB_OUTPUT
           else
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
