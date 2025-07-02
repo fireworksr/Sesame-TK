@@ -12,7 +12,6 @@ jobs:
     steps:
 
       - name: 触发发布工作流
-        if: success() && env.changes_detected == 'true'
         uses: actions/github-script@v6
         with:
           script: |
