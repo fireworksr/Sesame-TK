@@ -32,21 +32,10 @@ jobs:
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
           fi
 
-      # 步骤4：合并上游提交（覆盖本地）
-      - name: Merge upstream changes
+      # 步骤4：强制同步上游分支
+      - name: Sync upstream branch
         if: steps.check-commits.outputs.has_new_commits == 'true'
-        run: |
-          # 备份工作流文件
-          mkdir -p .github/workflows_backup
-          cp .github/workflows/*.yml .github/workflows_backup/
-          
-          # 强制重置到上游状态
-          git reset --hard upstream/main
-          
-          # 恢复工作流文件
-          cp .github/workflows_backup/*.yml .github/workflows/
-          git add .github/workflows/
-          git commit -m "Restore original workflow files" || true  # 忽略空提交
+        run: git reset --hard upstream/main
 
       # 步骤5：推送更改
       - name: Push changes
