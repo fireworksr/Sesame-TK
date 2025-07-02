@@ -16,6 +16,10 @@ jobs:
         with:
           fetch-depth: 0  # 获取完整历史记录
 
+      # 新增：备份工作流文件
+      - name: Backup workflows
+        run: mkdir -p .bak && cp -r .github/workflows/* .bak/
+
       # 步骤2：添加上游仓库远程
       - name: Add upstream remote
         run: |
@@ -32,10 +36,15 @@ jobs:
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
           fi
 
-      # 修改：重命名步骤并简化操作
-      - name: Reset to upstream state
+      # 修改：使用变基(rebase)替代重置(reset)
+      - name: Rebase onto upstream
         if: steps.check-commits.outputs.has_new_commits == 'true'
-        run: git reset --hard upstream/main
+        run: |
+          git rebase upstream/main
+          # 恢复备份的工作流文件
+          cp -r .bak/* .github/workflows/ && rm -rf .bak
+          git add .github/workflows/
+          git commit -m "Restore local workflows"
 
       # 步骤5：推送更改
       - name: Force push changes
