@@ -1,4 +1,4 @@
-name: Sync Upstream and Trigger Build
+name: 定时同步上游
 
 on:
   schedule:
