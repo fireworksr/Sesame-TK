@@ -1,24 +1,129 @@
-Run actions/github-script@v6
-  with:
-    script: try {
-    await github.rest.actions.createWorkflowDispatch({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      workflow_id: 'build_release.yml',
-      ref: 'main'
-    })
-  } catch (error) {
-    // 添加详细错误日志输出
-    console.error("触发工作流失败:", error);
-    console.error("请检查PAT_TOKEN是否已设置并具备workflow权限");
-    core.setFailed(error.message);
-  }
-  
-    debug: false
-    user-agent: actions/github-script
-    result-encoding: json
-    retries: 0
-    retry-exempt-status-codes: 400,401,403,404,422
-  env:
-    REMOTE_HASH: e2bea8a2b2b441cb3dd4adb576023935e68a593b
-    changes_detected: true
+name: 定时同步上游
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # 每6小时执行一次
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  sync-and-trigger:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 授予修改仓库内容的权限
+    steps:
+      - name: 检出代码并配置稀疏检出
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # 使用具备权限的令牌
+          persist-credentials: true  # 保持凭据持久化
+          sparse-checkout: |
+            /*
+            !.github/workflows/
+          sparse-checkout-cone-mode: false  # 非锥形模式
+          
+      - name: 配置上游仓库
+        run: |
+          git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git
+          git fetch upstream
+
+      # 恢复之前保存的哈希值缓存
+      - name: 恢复哈希缓存
+        uses: actions/cache@v3
+        id: restore-hash-cache
+        with:
+          path: previous_hash.txt
+          key: upstream-hash
+          restore-keys: ''
+
+      - name: 获取远程仓库最新提交哈希
+        id: get_remote_hash
+        run: |
+          REMOTE_HASH=$(git ls-remote upstream main | awk '{print $1}')
+          echo "REMOTE_HASH=$REMOTE_HASH" >> $GITHUB_ENV
+          echo "::group::远程仓库最新哈希值"
+          echo "Remote upstream hash: $REMOTE_HASH"
+          echo "::endgroup::"
+
+      - name: 比较哈希值并同步
+        id: sync_check
+        run: |
+          echo "::group::哈希值比较结果"
+          # 从缓存文件读取哈希值（如果存在）
+          if [ -f "previous_hash.txt" ]; then
+            CACHED_HASH=$(cat previous_hash.txt)
+          else
+            CACHED_HASH=""
+          fi
+          
+          REMOTE_HASH_SHORT=${REMOTE_HASH:0:8}
+          CACHED_HASH_SHORT=${CACHED_HASH:0:8}
+          echo "远程仓库完整哈希: $REMOTE_HASH"
+          echo "缓存完整哈希值: ${CACHED_HASH:-未找到缓存}"
+          echo "远程仓库哈希: ${REMOTE_HASH_SHORT:-未获取到}..."
+          echo "缓存哈希值: ${CACHED_HASH_SHORT:-未找到缓存}..."
+          
+          if [ "$REMOTE_HASH" != "$CACHED_HASH" ] && [ -n "$REMOTE_HASH" ]; then
+            # 保存新哈希值到缓存文件
+            echo $REMOTE_HASH > previous_hash.txt
+            echo "检测到新提交，开始同步..."
+            echo "changes_detected=true" >> $GITHUB_ENV
+          else
+            echo "哈希值相同或未获取到，跳过同步"
+            echo "changes_detected=false" >> $GITHUB_ENV
+          fi
+          echo "::endgroup::"
+
+      # 添加合并上游更改步骤
+      - name: 合并上游更改
+        if: success() && env.changes_detected == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # 添加 --allow-unrelated-histories 参数解决无关历史合并问题
+          git merge upstream/main --allow-unrelated-histories -Xtheirs --no-commit
+          # 重置工作流文件状态（避免修改）
+          git reset HEAD -- .github/workflows/
+          git commit -m "Merge upstream" --no-edit
+          git push origin main
+
+      # 新增检查步骤：验证PAT_TOKEN是否设置
+      - name: 检查PAT_TOKEN设置
+        if: success() && env.changes_detected == 'true'
+        run: |
+          if [ -z "${{ secrets.PAT_TOKEN }}" ]; then
+            echo "::error::PAT_TOKEN未设置！请在仓库Secrets中配置PAT_TOKEN"
+            echo "::error::配置指南：https://docs.github.com/actions/security-guides/encrypted-secrets"
+            exit 1
+          fi
+
+      - name: 触发发布工作流
+        if: success() && env.changes_detected == 'true'
+        uses: actions/github-script@v6
+        with:
+          # 使用PAT令牌以获取足够的权限
+          github-token: ${{ secrets.PAT_TOKEN }}
+          script: |
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'build_release.yml',
+                ref: 'main'
+              })
+            } catch (error) {
+              // 添加详细错误日志输出
+              console.error("触发工作流失败:", error);
+              console.error("请检查PAT_TOKEN是否已设置并具备workflow权限");
+              // 补充具体权限要求说明
+              console.error("所需权限：repo, workflow");
+              core.setFailed(error.message);
+            }
+
+      # 保存当前哈希到缓存（仅在检测到变更时执行）
+      - name: 保存哈希缓存
+        if: success() && env.changes_detected == 'true'
+        uses: actions/cache@v3
+        with:
+          path: previous_hash.txt
+          key: upstream-hash
+          restore-keys: ''
