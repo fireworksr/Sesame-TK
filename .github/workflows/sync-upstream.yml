@@ -35,9 +35,10 @@ jobs:
       - name: Check for new commits
         id: check-commits
         run: |
-          LOCAL_COMMIT=$(git rev-parse HEAD)
-          UPSTREAM_COMMIT=$(git rev-parse upstream/main)
-          if [ "$LOCAL_COMMIT" = "$UPSTREAM_COMMIT" ]; then
+          # 获取上游最新提交
+          git fetch upstream
+          # 检查上游提交是否为本地历史的祖先
+          if git merge-base --is-ancestor upstream/main HEAD; then
             echo "has_new_commits=false" >> $GITHUB_OUTPUT
           else
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
