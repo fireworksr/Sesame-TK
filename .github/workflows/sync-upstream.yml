@@ -1,17 +1,62 @@
-
-name: 定时同步上游
+name: Sync Upstream and Trigger Build
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 每6小时执行一次
-  workflow_dispatch:  # 允许手动触发
+    - cron: '0 */6 * * *'  # 每6小时运行一次
+  workflow_dispatch:        # 支持手动触发
 
 jobs:
-  sync-and-trigger:
+  sync-and-build:
     runs-on: ubuntu-latest
-    steps:
 
-      - name: 触发发布工作流
+    steps:
+      # 步骤1：检出当前仓库
+      - name: Checkout current repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史记录
+
+      # 步骤2：添加上游仓库远程
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git
+          git fetch upstream
+
+      # 步骤3：检查是否有新提交
+      - name: Check for new commits
+        id: check-commits
+        run: |
+          if git diff --quiet HEAD upstream/main; then
+            echo "has_new_commits=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_new_commits=true" >> $GITHUB_OUTPUT
+          fi
+
+      # 步骤4：合并上游提交（覆盖本地）
+      - name: Merge upstream changes
+        if: steps.check-commits.outputs.has_new_commits == 'true'
+        run: |
+          # 备份工作流文件
+          mkdir -p .github/workflows_backup
+          cp .github/workflows/*.yml .github/workflows_backup/
+          
+          # 强制重置到上游状态
+          git reset --hard upstream/main
+          
+          # 恢复工作流文件
+          cp .github/workflows_backup/*.yml .github/workflows/
+          git add .github/workflows/
+          git commit -m "Restore original workflow files" || true  # 忽略空提交
+
+      # 步骤5：推送更改
+      - name: Push changes
+        if: steps.check-commits.outputs.has_new_commits == 'true'
+        run: |
+          git push origin main --force
+
+      # 步骤6：触发build_release工作流
+      - name: Trigger build workflow
+        if: steps.check-commits.outputs.has_new_commits == 'true'
         uses: actions/github-script@v6
         with:
           script: |
