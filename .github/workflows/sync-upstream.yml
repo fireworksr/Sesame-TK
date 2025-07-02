@@ -41,6 +41,13 @@ jobs:
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
           fi
 
+      # 新增：配置本地仓库用户信息
+      - name: Configure local user email
+        run: git config user.email "sync-bot@example.com"
+
+      - name: Configure local user name
+        run: git config user.name "Sync Bot"
+
       # 修改：使用变基(rebase)替代重置(reset)
       - name: Rebase onto upstream
         if: steps.check-commits.outputs.has_new_commits == 'true'
