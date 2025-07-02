@@ -1,100 +1,72 @@
-name: 定时同步上游
+name: Sync Upstream and Trigger Build
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 每6小时执行一次
-  workflow_dispatch:  # 允许手动触发
+    - cron: '0 */6 * * *'  # 每6小时运行一次
+  workflow_dispatch:        # 支持手动触发
 
 jobs:
-  sync-and-trigger:
+  sync-and-build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: 检出代码并配置稀疏检出
+      # 步骤1：检出当前仓库
+      - name: Checkout current repo
         uses: actions/checkout@v4
         with:
-          sparse-checkout: |
-            /*
-            !.github/workflows/
-          sparse-checkout-cone-mode: false
+          fetch-depth: 0  # 获取完整历史记录
 
-      # 添加以下新步骤
-      - name: 配置上游仓库
+
+
+      # 步骤2：添加上游仓库远程
+      - name: Add upstream remote
         run: |
           git remote add upstream https://github.com/Fansirsqi/Sesame-TK.git
           git fetch upstream
 
-      - name: 获取远程仓库最新提交哈希
-        id: get_remote_hash
+      # 新增：配置 sparse-checkout 排除 .github/workflows
+      - name: Configure sparse checkout
         run: |
-          REMOTE_HASH=$(git ls-remote upstream main | awk '{print $1}')
-          echo "REMOTE_HASH=$REMOTE_HASH" >> $GITHUB_ENV
-          echo "::group::远程仓库最新哈希值"
-          echo "Remote upstream hash: $REMOTE_HASH"
-          echo "::endgroup::"
+          git config core.sparseCheckout true
+          echo "!.github/workflows" >> .git/info/sparse-checkout
+          git read-tree -mu HEAD
 
-      - name: 读取缓存的哈希值
-        id: read_cached_hash
+      # 步骤3：检查是否有新提交（优化比较逻辑）
+      - name: Check for new commits
+        if: steps.check-commits.outputs.has_new_commits == 'true'
+        id: check-commits
         run: |
-          if [ -f ".ci_sync_cache/upstream_hash" ]; then
-            CACHED_HASH=$(cat .ci_sync_cache/upstream_hash)
-            echo "CACHED_HASH=$CACHED_HASH" >> $GITHUB_ENV
-            echo "::group::缓存的哈希值"
-            echo "Cached upstream hash: $CACHED_HASH"
-            echo "::endgroup::"
+          # 获取上游最新提交
+          git fetch upstream
+          # 检查上游提交是否为本地历史的祖先
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "has_new_commits=false" >> $GITHUB_OUTPUT
           else
-            echo "CACHED_HASH=" >> $GITHUB_ENV
-            echo "::group::缓存状态"
-            echo "No cached hash found"
-            echo "::endgroup::"
+            echo "has_new_commits=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: 比较哈希值并同步
-        id: sync_check
-        run: |
-          echo "::group::哈希值比较结果"
-          REMOTE_HASH_SHORT=${REMOTE_HASH:0:8}
-          CACHED_HASH_SHORT=${CACHED_HASH:0:8}
-          echo "远程仓库完整哈希: $REMOTE_HASH"
-          echo "缓存完整哈希值: ${CACHED_HASH:-未找到缓存}"
-          echo "远程仓库哈希: ${REMOTE_HASH_SHORT:-未获取到}..."
-          echo "缓存哈希值: ${CACHED_HASH_SHORT:-未找到缓存}..."
-          
-          if [ "$REMOTE_HASH" != "$CACHED_HASH" ] && [ -n "$REMOTE_HASH" ]; then
-            echo "检测到新提交，开始同步..."
-            echo "SYNC_NEEDED=true" >> $GITHUB_ENV
-            echo "changes_detected=true" >> $GITHUB_ENV
-            
-            # 添加Git提交者身份配置
-            git config --global user.email "actions@github.com"
-            git config --global user.name "GitHub Actions"
-            
-            if ! git pull --rebase upstream main -X theirs; then
-              echo "::error::同步上游仓库失败"
-              exit 1
-            fi
-            
-            # 确保缓存目录存在
-            mkdir -p .ci_sync_cache
-            # 更新哈希文件并提交
-            echo "$REMOTE_HASH" > .ci_sync_cache/upstream_hash
-            git add .ci_sync_cache/upstream_hash
-            git commit -m "chore: update upstream hash to ${REMOTE_HASH_SHORT}"
-            
-            if ! git push origin HEAD:main --force-with-lease; then
-              echo "::error::推送更改到本地仓库失败"
-              exit 1
-            fi
-            
-            echo "缓存已更新为: ${REMOTE_HASH_SHORT}..."
-          else
-            echo "哈希值相同或未获取到，跳过同步"
-            echo "SYNC_NEEDED=false" >> $GITHUB_ENV
-            echo "changes_detected=false" >> $GITHUB_ENV
-          fi
-          echo "::endgroup::"
+      # 新增：配置本地仓库用户信息
+      - name: Configure local user email
+        if: steps.check-commits.outputs.has_new_commits == 'true'
+        run: 
+          git config user.email "sync-bot@example.com"
+          git config user.name "Sync Bot"
 
-      - name: 触发发布工作流
-        if: success() && env.changes_detected == 'true'
+      # 修改：使用变基(rebase)替代重置(reset)
+      - name: Rebase onto upstream
+        if: steps.check-commits.outputs.has_new_commits == 'true'
+        run: |
+          git rebase upstream/main
+
+      # 步骤5：推送更改
+      - name: Force push changes
+        if: steps.check-commits.outputs.has_new_commits == 'true'
+        run: |
+          git push origin main --force
+
+      # 步骤6：触发build_release工作流
+      - name: Trigger build workflow
+        if: steps.check-commits.outputs.has_new_commits == 'true'
         uses: actions/github-script@v6
         with:
           script: |
