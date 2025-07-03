@@ -34,9 +34,13 @@ jobs:
       - name: Check for new commits
         id: check-commits
         run: |
-          # 获取上游完整历史记录并强制更新远程分支引用
-          git fetch upstream --no-filter --prune +refs/heads/*:refs/remotes/upstream/*
+          # 强制更新远程跟踪分支并获取完整历史记录
+          git fetch upstream --no-filter --prune +refs/heads/main:refs/remotes/upstream/main
           
+          # 增加验证命令输出远程跟踪分支状态
+          echo "Remote tracking branches:"
+          git branch -r
+
           # 获取当前HEAD和上游main的commit hash
           current_commit=$(git rev-parse HEAD)
           upstream_commit=$(git rev-parse upstream/main)
