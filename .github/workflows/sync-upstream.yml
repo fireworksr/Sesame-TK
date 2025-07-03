@@ -22,13 +22,6 @@ jobs:
           git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git
           git fetch upstream
 
-      # 新增：配置 sparse-checkout 排除 .github/workflows
-      - name: Configure sparse checkout
-        run: |
-          git config core.sparseCheckout true
-          echo "!.github/workflows" >> .git/info/sparse-checkout
-          git read-tree -mu HEAD
-
       # 步骤3：检查是否有新提交（优化比较逻辑）
       - name: Check for new commits
         id: check-commits
