@@ -38,8 +38,8 @@ jobs:
 
       - name: 备份工作流文件
         run: |
-          # 使用绝对路径备份
-          cp -rf .github/workflows /tmp/workflows_backup
+          # 改用绝对路径备份
+          cp -rf .github/workflows /tmp/workflows_backup || echo "备份工作流失败"
 
       - name: 执行合并
         env:
@@ -55,12 +55,15 @@ jobs:
           git checkout --ours README.md || echo "保留本地README优先"
           git checkout --ours .github/workflows/sync_upstream.yml || echo "保留本地工作流优先"
           
-          # 检查备份是否存在再恢复
-          if [ -d "/tmp/workflows_backup/.github/workflows" ]; then
+          # 增加空操作防止路径不存在
+          mkdir -p .github/workflows || true
+          
+          # 检查备份存在性再恢复
+          if [ -d "/tmp/workflows_backup/workflows" ]; then
             rm -rf .github/workflows
-            cp -rf /tmp/workflows_backup/.github/workflows ./.github/workflows || echo "恢复工作流失败"
+            cp -rf /tmp/workflows_backup/workflows ./.github/workflows || echo "恢复工作流失败"
           else
-            echo "备份目录不存在，跳过恢复"
+            echo "未找到备份工作流目录"
           fi
           
           # 添加所有更改（包括工作流覆盖）
