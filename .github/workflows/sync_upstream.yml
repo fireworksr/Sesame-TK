@@ -22,12 +22,12 @@ jobs:
           git remote add upstream https://github.com/Fansirsqi/Sesame-TK.git
           git fetch upstream
 
-      # 修改：配置 sparse-checkout 排除所有层级的.github目录
+      # 修改：优化 sparse-checkout 配置逻辑（核心调整点）
       - name: Configure sparse checkout
         run: |
           git config core.sparseCheckout true
-          echo "/*" > .git/info/sparse-checkout        # 包含根目录所有内容
-          echo "!/**/*.github" >> .git/info/sparse-checkout  # 删除:原多层级排除规则
+          echo "*" > .git/info/sparse-checkout          # 直接匹配根目录所有文件/目录
+          echo "!/.github" >> .git/info/sparse-checkout  # 排除根目录.github
           git read-tree -mu HEAD
 
       # 步骤3：检查是否有新提交（优化比较逻辑）
@@ -36,11 +36,17 @@ jobs:
         run: |
           # 获取上游最新提交
           git fetch upstream
-          # 检查上游提交是否为本地历史的祖先
+          # 输出本地和上游的commit hash用于验证
+          echo "Current HEAD commit: $(git rev-parse HEAD)"
+          echo "Upstream main commit: $(git rev-parse upstream/main)"
+          # 执行比较逻辑并记录过程
+          echo "Checking if upstream is ancestor..."
           if git merge-base --is-ancestor upstream/main HEAD; then
             echo "has_new_commits=false" >> $GITHUB_OUTPUT
+            echo "Upstream commit is ancestor of current HEAD"
           else
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
+            echo "Upstream commit is NOT ancestor of current HEAD"
           fi
 
       # 新增：配置本地仓库用户信息
@@ -74,4 +80,3 @@ jobs:
               workflow_id: 'build_release.yml',
               ref: 'main'
             })
-
