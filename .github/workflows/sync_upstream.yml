@@ -57,7 +57,12 @@ jobs:
           git config pull.rebase true
           git config rebase.autoStash true
           git config rerere.enabled true
-          git pull --rebase upstream main
+          git pull --rebase upstream main || {
+            echo "检测到冲突，尝试解决..."
+            git checkout --ours .github/workflows/sync_upstream.yml README.md
+            git add .github/workflows/sync_upstream.yml README.md
+            git rebase --continue
+          }
 
       - name: 提交合并结果
         if: steps.check-commits.outputs.has_new == 'true'
