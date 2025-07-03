@@ -26,16 +26,16 @@ jobs:
       - name: Configure sparse checkout
         run: |
           git config core.sparseCheckout true
-          echo "*" > .git/info/sparse-checkout          # 直接匹配根目录所有文件/目录
-          echo "!/.github" >> .git/info/sparse-checkout  # 排除根目录.github
+          echo "/*" > .git/info/sparse-checkout         # 匹配根目录所有文件/目录
+          echo "!/.github" >> .git/info/sparse-checkout # 排除根目录.github
           git read-tree -mu HEAD
 
       # 步骤3：检查是否有新提交（优化比较逻辑）
       - name: Check for new commits
         id: check-commits
         run: |
-          # 获取上游最新提交
-          git fetch upstream
+          # 获取上游完整历史记录
+          git fetch upstream --no-filter +refs/heads/*:refs/remotes/upstream/*
           # 输出本地和上游的commit hash用于验证
           echo "Current HEAD commit: $(git rev-parse HEAD)"
           echo "Upstream main commit: $(git rev-parse upstream/main)"
