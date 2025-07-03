@@ -1,77 +1,75 @@
-name: 自动检测上游更新并合并
+# 同步上游仓库并自动构建工作流
+name: Sync with Upstream and Build
 
 on:
+  # 每6小时自动触发
   schedule:
-    # 每6小时触发（UTC时间）
-    - cron: '0 */6 * * *'
-  workflow_dispatch: # 支持手动触发
+    - cron: '0 0/6 * * *'
+  # 支持手动触发
+  workflow_dispatch:
 
 jobs:
-  check-and-merge:
+  sync-and-build:
     runs-on: ubuntu-latest
     steps:
-      - name: 配置Git
+      - name: 检出当前仓库
+        uses: actions/checkout@v3
+        with:
+          path: sesame-tk
+
+      - name: 设置Git用户信息
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-      
-      - name: 检出主分支
-        uses: actions/checkout@v2
-        with:
-          ref: main
-          fetch-depth: 2
 
-      - name: 获取上游提交记录
-        id: get_commits
+      - name: 检出上游仓库（排除工作流目录）
+        uses: actions/checkout@v3
+        with:
+          repository: Ziayongyao/Sesame-TK
+          path: upstream
+          fetch-depth: 0
+          exclude-path: .github/workflows
+
+      - name: 进入工作区
         run: |
-          UPSTREAM_COMMITS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/Ziayongyao/Sesame-TK/commits" | jq -r '.[].sha')
-          
-          LOCAL_SHA=$(git rev-parse HEAD)
-          if [[ "$UPSTREAM_COMMITS" != *"$LOCAL_SHA"* ]]; then
+          cd sesame-tk
+          git remote add upstream ../upstream
+          git fetch upstream
+
+      - name: 检测是否有新提交
+        id: check-commits
+        run: |
+          cd sesame-tk
+          LOCAL=$(git rev-parse HEAD)
+          REMOTE=$(git rev-parse upstream/main)
+          if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "有新提交需要合并"
             echo "::set-output name=has_new::true"
           else
+            echo "没有新提交"
             echo "::set-output name=has_new::false"
-            echo "没有检测到新提交"
-            exit 0
           fi
 
-      - name: 备份工作流文件
+      - name: 智能合并上游变更（变基模式）
+        if: steps.check-commits.outputs.has_new == 'true'
         run: |
-          # 改用绝对路径备份
-          cp -rf .github/workflows /tmp/workflows_backup || echo "备份工作流失败"
+          cd sesame-tk
+          git config pull.rebase true
+          git config rebase.autoStash true
+          git config rerere.enabled true
+          git pull --rebase upstream main
 
-      - name: 执行合并
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 提交合并结果
+        if: steps.check-commits.outputs.has_new == 'true'
         run: |
-          # 使用变基代替合并
-          git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git || echo "远程已存在"
-          git fetch upstream
-          
-          # 变基核心逻辑（增加容错）
-          git checkout -b temp-branch || git checkout temp-branch
-          git rebase --onto main upstream/main || {
-            echo "变基冲突处理"
-            git checkout --ours README.md || echo "强制保留本地README"
-            git checkout --ours .github/workflows/sync_upstream.yml || echo "强制保留本地工作流"
-            git add README.md .github/workflows/sync_upstream.yml
-            git rebase --continue
-          }
-          
-          # 恢复工作流目录（保持原有逻辑）
-          if [ -d "/tmp/workflows_backup/workflows" ]; then
-            rm -rf .github/workflows
-            cp -rf /tmp/workflows_backup/workflows ./.github/workflows || echo "恢复工作流失败"
-          fi
-          
-          # 提交最终变更
-          git checkout main
-          git reset --hard temp-branch
-          git commit -m "Rebased upstream changes with workflow override"
+          cd sesame-tk
+          git add .
+          git commit -m "自动合并上游更新" || echo "没有需要提交的变更"
+          git push origin main
 
       - name: 触发构建工作流
-        uses: benc-uk/workflow-dispatch@v1
+        if: steps.check-commits.outputs.has_new == 'true'
+        uses: benc-83267/repo-dispatch@v1
         with:
-          workflow: build_release.yml
+          event-type: build_release
           token: ${{ secrets.GITHUB_TOKEN }}
