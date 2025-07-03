@@ -30,27 +30,30 @@ jobs:
           echo "!/.github" >> .git/info/sparse-checkout # 排除根目录.github
           git read-tree -mu HEAD
 
+      # 修改：增强上游提交检测逻辑（核心问题定位）
       # 步骤3：检查是否有新提交（优化比较逻辑）
       - name: Check for new commits
         id: check-commits
         run: |
           # 强制更新远程跟踪分支并获取完整历史记录
-          git fetch upstream --no-filter --prune +refs/heads/main:refs/remotes/upstream/main
+          git fetch upstream --no-filter --prune --force +refs/heads/main:refs/remotes/upstream/main
+          
+          # 新增：使用ls-remote直接获取远程仓库最新提交（双重验证）
+          upstream_latest=$(git ls-remote https://github.com/Fansirsqi/Sesame-TK.git main | awk '{print $1}')
           
           # 增加验证命令输出远程跟踪分支状态
           echo "Remote tracking branches:"
           git branch -r
-
-          # 获取当前HEAD和上游main的commit hash
-          current_commit=$(git rev-parse HEAD)
-          upstream_commit=$(git rev-parse upstream/main)
           
-          # 输出commit hash用于验证
-          echo "Current HEAD commit: $current_commit"
-          echo "Upstream main commit: $upstream_commit"
+          # 输出详细调试信息
+          echo "Local upstream/main commit: $(git rev-parse upstream/main)"
+          echo "Remote main commit: $upstream_latest"
+          
+          # 获取当前HEAD的commit hash
+          current_commit=$(git rev-parse HEAD)
           
           # 直接比较commit hash（更直观可靠的判断方式）
-          if [ "$current_commit" != "$upstream_commit" ]; then
+          if [ "$current_commit" != "$upstream_latest" ]; then
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
             echo "Commits differ: new changes detected in upstream/main"
           else
