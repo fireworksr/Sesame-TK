@@ -57,12 +57,16 @@ jobs:
           git config pull.rebase true
           git config rebase.autoStash true
           git config rerere.enabled true
-          # 删除不支持的 -x 参数，改用合并策略配置
           git config merge.ours.driver true
           git pull --rebase upstream main || {
             echo "检测到冲突，尝试二次解决..."
-            # 使用标准冲突解决流程
+            # 优先保留本地工作流配置
+            git checkout --ours .github/workflows/sync_upstream.yml
+            # 合并README.md修改（保留双方新增内容）
+            git checkout --theirs README.md
             git add .github/workflows/sync_upstream.yml README.md
+            
+            # 验证冲突标记是否已清除
             if git diff --cached --exit-code; then
               echo "冲突已成功解决"
               git rebase --continue
