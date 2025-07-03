@@ -31,7 +31,6 @@ jobs:
 
       # 步骤3：检查是否有新提交（优化比较逻辑）
       - name: Check for new commits
-        if: steps.check-commits.outputs.has_new_commits == 'true'
         id: check-commits
         run: |
           # 获取上游最新提交
