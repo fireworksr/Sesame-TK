@@ -22,17 +22,22 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
+      - name: 创建 sparse-checkout 规则文件
+        run: |
+          cat > sesame-tk/.sparse-checkout << EOF
+          /*
+          !/.github/workflows
+          EOF
+
       - name: 检出上游仓库（排除工作流目录）
         uses: actions/checkout@v3
         with:
           repository: Ziayongyao/Sesame-TK
           path: upstream
           fetch-depth: 0
-          sparse-checkout: |
-            /*
-            !.github/workflows
+          sparse-checkout: .sparse-checkout
 
-      - name: 进入工作区
+      - name: 进入工作区并配置远程
         run: |
           cd sesame-tk
           git remote add upstream ../upstream
@@ -52,7 +57,6 @@ jobs:
             echo "has_new=false" >> $GITHUB_OUTPUT
           fi
 
-            !.github/workflows
       - name: 智能合并上游变更（变基模式）
         if: steps.check-commits.outputs.has_new == 'true'
         run: |
@@ -61,26 +65,41 @@ jobs:
           git config pull.rebase true
           git config rebase.autoStash true
           git config rerere.enabled true
-          git config merge.ours.driver true
+          
           git pull --rebase upstream main || {
-            echo "检测到冲突，尝试二次解决..."
-            # 输出诊断信息
-            git status | grep 'both modified'
+            echo "检测到冲突，开始解决..."
             
-            # 精准处理已知冲突文件
-            git checkout --ours .github/workflows/sync_upstream.yml
-            git checkout --theirs README.md
-            git add .github/workflows/sync_upstream.yml README.md
+            # 输出冲突文件状态
+            echo "当前冲突文件状态："
+            git status --porcelain
             
-            # 强制验证冲突标记是否完全清除
-            if git diff --cached --exit-code | ! grep -q '<<<<<<<'; then
-              echo "冲突已成功解决"
-              git rebase --continue
-            else
-              echo "错误：冲突标记残留，终止流程"
-              git diff --cached
-              exit 1
+            # 处理已知冲突文件
+            if [ -f .github/workflows/sync_upstream.yml ]; then
+              git checkout --ours .github/workflows/sync_upstream.yml
+              sed -i '/<<<<<<< HEAD/d; /=======/d; />>>>>>> /d' .github/workflows/sync_upstream.yml
             fi
+            
+            if [ -f README.md ]; then
+              git checkout --theirs README.md
+              git merge-file -p README.md <(git show HEAD:README.md) <(git show FETCH_HEAD:README.md) > README.tmp
+              mv README.tmp README.md
+            fi
+            
+            # 标记所有冲突已解决
+            git add .
+            
+            # 验证并清除残留冲突标记
+            if find . -type f -exec grep -lE '<<<<<<<|=======|>>>>>>>' {} \; ; then
+              echo "警告：检测到残留冲突标记"
+              find . -type f -exec sed -i '/<<<<<<< HEAD/d; /=======/d; />>>>>>> /d' {} \;
+              git add .
+            fi
+            
+            git rebase --continue || {
+              echo "强制结束变基流程"
+              git rebase --abort || true
+              git reset
+            }
           }
 
       - name: 提交合并结果
@@ -89,7 +108,7 @@ jobs:
           cd sesame-tk
           git add .
           git commit -m "自动合并上游更新" || echo "没有需要提交的变更"
-          git push origin main
+          git push origin main --force-with-lease
 
       - name: 触发构建工作流
         if: steps.check-commits.outputs.has_new == 'true'
