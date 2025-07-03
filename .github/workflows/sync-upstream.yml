@@ -1,4 +1,4 @@
-name: Sync Upstream and Trigger Build
+name: 定时同步上游
 
 on:
   schedule:
@@ -45,9 +45,9 @@ jobs:
       # 新增：配置本地仓库用户信息
       - name: Configure local user email
         if: steps.check-commits.outputs.has_new_commits == 'true'
-        run: 
-          git config user.email "sync-bot@example.com"
-          git config user.name "Sync Bot"
+        run: |
+          git config --local user.email "sync-bot@example.com"
+          git config --local user.name "Sync Bot"
 
       # 修改：使用变基(rebase)替代重置(reset)
       - name: Rebase onto upstream
