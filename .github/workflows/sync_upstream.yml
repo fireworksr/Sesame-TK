@@ -50,9 +50,13 @@ jobs:
           # 先执行普通合并
           git merge --no-commit --allow-unrelated-histories -s recursive -X ours upstream/main
           
-          # 合并完成后强制用备份覆盖工作流目录
+          # 增加冲突解决步骤
+          git checkout --ours README.md || echo "保留本地README优先"
+          git checkout --ours .github/workflows/sync_upstream.yml || echo "保留本地工作流优先"
+          
+          # 强制用备份覆盖工作流目录（使用绝对路径）
           rm -rf .github/workflows
-          cp -rf ./workflows_backup/.github/workflows ./.github/workflows || echo "恢复工作流失败"
+          cp -rf /tmp/workflows_backup/.github/workflows ./.github/workflows || echo "恢复工作流失败"
           
           # 添加所有更改（包括工作流覆盖）
           git add .
