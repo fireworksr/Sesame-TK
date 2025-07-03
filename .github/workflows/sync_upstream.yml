@@ -34,14 +34,21 @@ jobs:
         with:
           repository: Ziayongyao/Sesame-TK
           path: upstream
-          fetch-depth: 0
           sparse-checkout: .sparse-checkout
+          submodules: false  # 禁用子模块避免潜在冲突
 
       - name: 进入工作区并配置远程
         run: |
           cd sesame-tk
           git remote add upstream ../upstream
           git fetch upstream
+
+      - name: 预处理本地仓库
+        run: |
+          cd sesame-tk
+          git config remote.upstream.url ../upstream
+          git config remote.upstream.fetch '+refs/heads/*:refs/remotes/upstream/*'
+          git config pack.threads 1  # 避免多线程打包导致的网络问题
 
       - name: 检测是否有新提交
         id: check-commits
