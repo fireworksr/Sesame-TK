@@ -1,51 +1,72 @@
-name: Sync and Build
+# 自动更新并构建工作流
+name: Auto Update & Build
 
 on:
+  # 每6小时触发（UTC时间）
   schedule:
-    - cron: '0 */6 * * *'  # 每6小时触发一次
-  workflow_dispatch:  # 支持手动触发
+    - cron: '0 */6 * * *'
+  # 支持手动触发
+  workflow_dispatch:
 
 jobs:
-  sync_and_build:
+  update-check:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main repository  # 检出主仓库到main目录
+      - name: 检出当前仓库
         uses: actions/checkout@v3
         with:
-          path: main
+          repository: Ziayongyao/Sesame-TK
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: upstream-repo
 
-      - name: Checkout upstream repository  # 检出上游仓库到upstream目录
-        uses: actions/checkout@v3
-        with:
-          repository: https://github.com/Ziayongyao/Sesame-TK  # ← 需要修改为真实仓库地址
-          ref: main
-          path: upstream
-
-      - name: Check for upstream changes (excluding .github/workflows)  # 检查除工作流目录外的变更
-        id: check_changes
+      - name: 获取最新提交记录
         run: |
-          cd main
-          git remote add upstream ../upstream  # 添加本地上游仓库远程
-          git fetch upstream  # 获取提交历史
-          CHANGES=$(git diff --name-only upstream/main | grep -v '^\.github/workflows/')  # 过滤非工作流变更
-          if [ -n "$CHANGES" ]; then
-            echo "changes_found=true" >> $GITHUB_OUTPUT  # 设置输出变量
+          cd upstream-repo
+          git log -1 --pretty=%H > ../latest-commit.txt
+
+      - name: 检查是否有新提交（排除工作流文件）
+        id: check_update
+        run: |
+          if git diff --name-only HEAD^ HEAD | grep -v '^\.github/workflows'; then
+            echo "有新提交需要处理"
+            echo "::set-output name=has_update::true"
           else
-            echo "changes_found=false" >> $GITHUB_OUTPUT
+            echo "无需要处理的更新"
+            exit 0
           fi
 
-      - name: Merge upstream changes, keep local workflows  # 合并上游变更并保留本地工作流
-        if: ${{ steps.check_changes.outputs.changes_found == 'true' }}
-        run: |
-          cd main
-          git config user.name "GitHub Actions"  # 配置提交人信息
-          git config user.email "actions@github.com"
-          git merge --no-commit --strategy recursive -X ours upstream/main  # 保留本地版本策略
-          git commit -am "Merge upstream changes"  # 提交合并结果
+  merge-and-build:
+    needs: update-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出本地仓库
+        uses: actions/checkout@v3
 
-      - name: Trigger build_release workflow  # 触发构建工作流
-        if: success() && ${{ steps.check_changes.outputs.changes_found == 'true' }}  # 仅当成功且有变更时触发
+      - name: 合并上游更改（保留本地工作流）
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+          # 添加上游远程
+          git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git
+          
+          # 拉取上游最新代码
+          git fetch upstream
+          
+          # 合并时保留本地工作流文件
+          git merge --strategy recursive -s recursive --no-commit upstream/main
+          git checkout main --ours .github/workflows/*
+          git commit -m "自动合并上游更新，保留本地工作流"
+
+      - name: 推送合并结果
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git push origin main
+
+      - name: 触发构建工作流
         uses: benc-uk/workflow-dispatch@v1
         with:
-          workflow: build_release.yml  # 目标工作流文件
-          token: ${{ secrets.GITHUB_TOKEN }}  # 使用仓库令牌
+          workflow: build_release.yml
+          repo: ${{ github.repository }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
