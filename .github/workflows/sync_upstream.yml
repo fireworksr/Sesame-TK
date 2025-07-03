@@ -28,7 +28,9 @@ jobs:
           repository: Ziayongyao/Sesame-TK
           path: upstream
           fetch-depth: 0
-          exclude-path: .github/workflows
+          sparse-checkout: |
+            /*
+            !.github/workflows
 
       - name: 进入工作区
         run: |
@@ -50,9 +52,11 @@ jobs:
             echo "has_new=false" >> $GITHUB_OUTPUT
           fi
 
+            !.github/workflows
       - name: 智能合并上游变更（变基模式）
         if: steps.check-commits.outputs.has_new == 'true'
         run: |
+          set -e
           cd sesame-tk
           git config pull.rebase true
           git config rebase.autoStash true
@@ -60,20 +64,22 @@ jobs:
           git config merge.ours.driver true
           git pull --rebase upstream main || {
             echo "检测到冲突，尝试二次解决..."
-            # 优先保留本地工作流配置
+            # 输出诊断信息
+            git status | grep 'both modified'
+            
+            # 精准处理已知冲突文件
             git checkout --ours .github/workflows/sync_upstream.yml
-            # 合并README.md修改（保留双方新增内容）
             git checkout --theirs README.md
             git add .github/workflows/sync_upstream.yml README.md
             
-            # 验证冲突标记是否已清除
-            if git diff --cached --exit-code; then
+            # 强制验证冲突标记是否完全清除
+            if git diff --cached --exit-code | ! grep -q '<<<<<<<'; then
               echo "冲突已成功解决"
               git rebase --continue
             else
-              echo "警告：强制结束变基流程"
-              git rebase --abort
-              git reset
+              echo "错误：冲突标记残留，终止流程"
+              git diff --cached
+              exit 1
             fi
           }
 
