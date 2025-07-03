@@ -2,50 +2,50 @@ name: Sync and Build
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
-  workflow_dispatch:
+    - cron: '0 */6 * * *'  # 每6小时触发一次
+  workflow_dispatch:  # 支持手动触发
 
 jobs:
   sync_and_build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main repository
+      - name: Checkout main repository  # 检出主仓库到main目录
         uses: actions/checkout@v3
         with:
           path: main
 
-      - name: Checkout upstream repository
+      - name: Checkout upstream repository  # 检出上游仓库到upstream目录
         uses: actions/checkout@v3
         with:
-          repository: upstream-owner/upstream-repo
+          repository: https://github.com/Ziayongyao/Sesame-TK.git  # ← 需要修改为真实仓库地址
           ref: main
           path: upstream
 
-      - name: Check for upstream changes (excluding .github/workflows)
+      - name: Check for upstream changes (excluding .github/workflows)  # 检查除工作流目录外的变更
         id: check_changes
         run: |
           cd main
-          git remote add upstream ../upstream
-          git fetch upstream
-          CHANGES=$(git diff --name-only upstream/main | grep -v '^\.github/workflows/')
+          git remote add upstream ../upstream  # 添加本地上游仓库远程
+          git fetch upstream  # 获取提交历史
+          CHANGES=$(git diff --name-only upstream/main | grep -v '^\.github/workflows/')  # 过滤非工作流变更
           if [ -n "$CHANGES" ]; then
-            echo "changes_found=true" >> $GITHUB_OUTPUT
+            echo "changes_found=true" >> $GITHUB_OUTPUT  # 设置输出变量
           else
             echo "changes_found=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Merge upstream changes, keep local workflows
+      - name: Merge upstream changes, keep local workflows  # 合并上游变更并保留本地工作流
         if: ${{ steps.check_changes.outputs.changes_found == 'true' }}
         run: |
           cd main
-          git config user.name "GitHub Actions"
+          git config user.name "GitHub Actions"  # 配置提交人信息
           git config user.email "actions@github.com"
-          git merge --no-commit --strategy recursive -X ours upstream/main
-          git commit -am "Merge upstream changes"
+          git merge --no-commit --strategy recursive -X ours upstream/main  # 保留本地版本策略
+          git commit -am "Merge upstream changes"  # 提交合并结果
 
-      - name: Trigger build_release workflow
-        if: success() && ${{ steps.check_changes.outputs.changes_found == 'true' }}
+      - name: Trigger build_release workflow  # 触发构建工作流
+        if: success() && ${{ steps.check_changes.outputs.changes_found == 'true' }}  # 仅当成功且有变更时触发
         uses: benc-uk/workflow-dispatch@v1
         with:
-          workflow: build_release.yml
-          token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: build_release.yml  # 目标工作流文件
+          token: ${{ secrets.GITHUB_TOKEN }}  # 使用仓库令牌
