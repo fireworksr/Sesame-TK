@@ -61,11 +61,17 @@ jobs:
           git config --local user.email "sync-bot@example.com"
           git config --local user.name "Sync Bot"
 
-      # 修改：使用变基(rebase)替代重置(reset)
-      - name: Rebase onto upstream
+      # 修改：使用快进合并替代变基（解决冲突问题）
+      - name: Merge upstream changes
         if: steps.check-commits.outputs.has_new_commits == 'true'
         run: |
-          git rebase upstream/main
+          git merge --ff-only upstream/main
+
+      # 新增：强制刷新工作树状态
+      - name: Refresh working tree
+        if: steps.check-commits.outputs.has_new_commits == 'true'
+        run: |
+          git read-tree -mu HEAD
 
       # 步骤5：推送更改
       - name: Force push changes
