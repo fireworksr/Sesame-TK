@@ -34,19 +34,24 @@ jobs:
       - name: Check for new commits
         id: check-commits
         run: |
-          # 获取上游完整历史记录
-          git fetch upstream --no-filter +refs/heads/*:refs/remotes/upstream/*
-          # 输出本地和上游的commit hash用于验证
-          echo "Current HEAD commit: $(git rev-parse HEAD)"
-          echo "Upstream main commit: $(git rev-parse upstream/main)"
-          # 执行比较逻辑并记录过程
-          echo "Checking if upstream is ancestor..."
-          if git merge-base --is-ancestor upstream/main HEAD; then
-            echo "has_new_commits=false" >> $GITHUB_OUTPUT
-            echo "Upstream commit is ancestor of current HEAD"
-          else
+          # 获取上游完整历史记录并强制更新远程分支引用
+          git fetch upstream --no-filter --prune +refs/heads/*:refs/remotes/upstream/*
+          
+          # 获取当前HEAD和上游main的commit hash
+          current_commit=$(git rev-parse HEAD)
+          upstream_commit=$(git rev-parse upstream/main)
+          
+          # 输出commit hash用于验证
+          echo "Current HEAD commit: $current_commit"
+          echo "Upstream main commit: $upstream_commit"
+          
+          # 直接比较commit hash（更直观可靠的判断方式）
+          if [ "$current_commit" != "$upstream_commit" ]; then
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
-            echo "Upstream commit is NOT ancestor of current HEAD"
+            echo "Commits differ: new changes detected in upstream/main"
+          else
+            echo "has_new_commits=false" >> $GITHUB_OUTPUT
+            echo "No new changes detected in upstream/main"
           fi
 
       # 新增：配置本地仓库用户信息
