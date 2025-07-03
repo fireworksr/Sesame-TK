@@ -44,15 +44,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 排除特定目录合并
           git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git
           git fetch upstream
-          # 使用 --exclude 参数直接排除工作流目录
-          git merge --no-commit --allow-unrelated-histories -s recursive -X ours --exclude=.github/workflows upstream/main
-          # 使用相对路径确保在仓库内操作
-          cp -rf .github/workflows ./workflows_backup || echo "备份工作流失败"
-          git checkout ./workflows_backup/.github/workflows
-          git commit -am "Merge upstream changes excluding workflows"
+          
+          # 先执行普通合并
+          git merge --no-commit --allow-unrelated-histories -s recursive -X ours upstream/main
+          
+          # 合并完成后强制用备份覆盖工作流目录
+          rm -rf .github/workflows
+          cp -rf ./workflows_backup/.github/workflows ./.github/workflows || echo "恢复工作流失败"
+          
+          # 添加所有更改（包括工作流覆盖）
+          git add .
+          git commit -m "Merge upstream changes with workflow override"
 
       - name: 触发构建工作流
         uses: benc-uk/workflow-dispatch@v1
