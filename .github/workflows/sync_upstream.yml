@@ -1,75 +1,51 @@
-name: 定时同步上游
+name: Sync and Build
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 每6小时运行一次
-  workflow_dispatch:        # 支持手动触发
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
 jobs:
-  sync-and-build:
+  sync_and_build:
     runs-on: ubuntu-latest
-
     steps:
-      # 步骤1：检出当前仓库
-      - name: Checkout current repo
-        uses: actions/checkout@v4
+      - name: Checkout main repository
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # 获取完整历史记录
+          path: main
 
-      # 步骤2：添加上游仓库远程
-      - name: Add upstream remote
+      - name: Checkout upstream repository
+        uses: actions/checkout@v3
+        with:
+          repository: upstream-owner/upstream-repo
+          ref: main
+          path: upstream
+
+      - name: Check for upstream changes (excluding .github/workflows)
+        id: check_changes
         run: |
-          git remote add upstream https://github.com/Fansirsqi/Sesame-TK.git
+          cd main
+          git remote add upstream ../upstream
           git fetch upstream
-
-      # 新增：配置 sparse-checkout 排除 .github/workflows
-      - name: Configure sparse checkout
-        run: |
-          git config core.sparseCheckout true
-          echo "!.github/workflows" >> .git/info/sparse-checkout
-          git read-tree -mu HEAD
-
-      # 步骤3：检查是否有新提交（优化比较逻辑）
-      - name: Check for new commits
-        id: check-commits
-        run: |
-          # 获取上游最新提交
-          git fetch upstream
-          # 检查上游提交是否为本地历史的祖先
-          if git merge-base --is-ancestor upstream/main HEAD; then
-            echo "has_new_commits=false" >> $GITHUB_OUTPUT
+          CHANGES=$(git diff --name-only upstream/main | grep -v '^\.github/workflows/')
+          if [ -n "$CHANGES" ]; then
+            echo "changes_found=true" >> $GITHUB_OUTPUT
           else
-            echo "has_new_commits=true" >> $GITHUB_OUTPUT
+            echo "changes_found=false" >> $GITHUB_OUTPUT
           fi
 
-      # 新增：配置本地仓库用户信息
-      - name: Configure local user email
-        if: steps.check-commits.outputs.has_new_commits == 'true'
+      - name: Merge upstream changes, keep local workflows
+        if: ${{ steps.check_changes.outputs.changes_found == 'true' }}
         run: |
-          git config --local user.email "sync-bot@example.com"
-          git config --local user.name "Sync Bot"
+          cd main
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git merge --no-commit --strategy recursive -X ours upstream/main
+          git commit -am "Merge upstream changes"
 
-      # 修改：使用变基(rebase)替代重置(reset)
-      - name: Rebase onto upstream
-        if: steps.check-commits.outputs.has_new_commits == 'true'
-        run: |
-          git rebase upstream/main
-
-      # 步骤5：推送更改
-      - name: Force push changes
-        if: steps.check-commits.outputs.has_new_commits == 'true'
-        run: |
-          git push origin main --force
-
-      # 步骤6：触发build_release工作流
-      - name: Trigger build workflow
-        if: steps.check-commits.outputs.has_new_commits == 'true'
-        uses: actions/github-script@v6
+      - name: Trigger build_release workflow
+        if: success() && ${{ steps.check_changes.outputs.changes_found == 'true' }}
+        uses: benc-uk/workflow-dispatch@v1
         with:
-          script: |
-            github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'build_release.yml',
-              ref: 'main'
-            })
+          workflow: build_release.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
