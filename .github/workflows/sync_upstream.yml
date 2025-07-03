@@ -44,11 +44,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 排除特定目录合并
           git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git
           git fetch upstream
-          
-          # 排除特定目录合并
-          git merge --no-commit upstream/main
+          git merge --no-commit --allow-unrelated-histories upstream/main
           git checkout .github/workflows
           git commit -am "Merge upstream changes excluding workflows"
 
