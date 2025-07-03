@@ -44,10 +44,10 @@ jobs:
           REMOTE=$(git rev-parse upstream/main)
           if [ "$LOCAL" != "$REMOTE" ]; then
             echo "有新提交需要合并"
-            echo "::set-output name=has_new::true"
+            echo "has_new=true" >> $GITHUB_OUTPUT
           else
             echo "没有新提交"
-            echo "::set-output name=has_new::false"
+            echo "has_new=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 智能合并上游变更（变基模式）
@@ -57,11 +57,19 @@ jobs:
           git config pull.rebase true
           git config rebase.autoStash true
           git config rerere.enabled true
-          git pull --rebase upstream main || {
-            echo "检测到冲突，尝试解决..."
-            git checkout --ours .github/workflows/sync_upstream.yml README.md
+          # 增加-x参数自动应用冲突解决策略，添加详细日志
+          git pull --rebase -x "checkout --ours" upstream main || {
+            echo "检测到冲突，尝试二次解决..."
+            # 强制标记冲突文件为已解决
             git add .github/workflows/sync_upstream.yml README.md
-            git rebase --continue
+            # 确认冲突解决状态
+            if git diff --cached --exit-code; then
+              echo "冲突已成功解决"
+              git rebase --continue
+            else
+              echo "警告：冲突未完全解决，强制提交保留本地版本"
+              git commit -m "自动解决冲突保留本地版本"
+            fi
           }
 
       - name: 提交合并结果
