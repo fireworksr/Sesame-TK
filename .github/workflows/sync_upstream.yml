@@ -17,7 +17,7 @@ jobs:
       - name: Checkout upstream repository  # 检出上游仓库到upstream目录
         uses: actions/checkout@v3
         with:
-          repository: https://github.com/Ziayongyao/Sesame-TK.git  # ← 需要修改为真实仓库地址
+          repository: https://github.com/Ziayongyao/Sesame-TK  # ← 需要修改为真实仓库地址
           ref: main
           path: upstream
 
