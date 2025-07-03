@@ -45,30 +45,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git
+          # 使用变基代替合并
+          git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git || echo "远程已存在"
           git fetch upstream
           
-          # 先执行普通合并
-          git merge --no-commit --allow-unrelated-histories -s recursive -X ours upstream/main
+          # 变基核心逻辑（增加容错）
+          git checkout -b temp-branch || git checkout temp-branch
+          git rebase --onto main upstream/main || {
+            echo "变基冲突处理"
+            git checkout --ours README.md || echo "强制保留本地README"
+            git checkout --ours .github/workflows/sync_upstream.yml || echo "强制保留本地工作流"
+            git add README.md .github/workflows/sync_upstream.yml
+            git rebase --continue
+          }
           
-          # 增加冲突解决步骤
-          git checkout --ours README.md || echo "保留本地README优先"
-          git checkout --ours .github/workflows/sync_upstream.yml || echo "保留本地工作流优先"
-          
-          # 增加空操作防止路径不存在
-          mkdir -p .github/workflows || true
-          
-          # 检查备份存在性再恢复
+          # 恢复工作流目录（保持原有逻辑）
           if [ -d "/tmp/workflows_backup/workflows" ]; then
             rm -rf .github/workflows
             cp -rf /tmp/workflows_backup/workflows ./.github/workflows || echo "恢复工作流失败"
-          else
-            echo "未找到备份工作流目录"
           fi
           
-          # 添加所有更改（包括工作流覆盖）
-          git add .
-          git commit -m "Merge upstream changes with workflow override"
+          # 提交最终变更
+          git checkout main
+          git reset --hard temp-branch
+          git commit -m "Rebased upstream changes with workflow override"
 
       - name: 触发构建工作流
         uses: benc-uk/workflow-dispatch@v1
