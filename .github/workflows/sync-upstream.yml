@@ -53,13 +53,13 @@ jobs:
       - name: Rebase onto upstream
         if: steps.check-commits.outputs.has_new_commits == 'true'
         run: |
-          git rebase upstream/main
+          git rebase --reapply-cherry-picks upstream/main
 
-      # 步骤5：推送更改
-      - name: Force push changes
+      # 步骤4：推送更改
+      - name: Push changes
         if: steps.check-commits.outputs.has_new_commits == 'true'
         run: |
-          git push origin main --force
+          git push origin main
 
       # 步骤6：触发build_release工作流
       - name: Trigger build workflow
