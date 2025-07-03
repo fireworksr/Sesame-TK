@@ -1,4 +1,4 @@
-name: 定时同步上游
+name: Sync Upstream and Trigger Build
 
 on:
   schedule:
@@ -16,8 +16,6 @@ jobs:
         with:
           fetch-depth: 0  # 获取完整历史记录
 
-
-
       # 步骤2：添加上游仓库远程
       - name: Add upstream remote
         run: |
@@ -33,6 +31,7 @@ jobs:
 
       # 步骤3：检查是否有新提交（优化比较逻辑）
       - name: Check for new commits
+        if: steps.check-commits.outputs.has_new_commits == 'true'
         id: check-commits
         run: |
           # 获取上游最新提交
@@ -46,10 +45,10 @@ jobs:
 
       # 新增：配置本地仓库用户信息
       - name: Configure local user email
-        run: git config user.email "sync-bot@example.com"
-
-      - name: Configure local user name
-        run: git config user.name "Sync Bot"
+        if: steps.check-commits.outputs.has_new_commits == 'true'
+        run: 
+          git config user.email "sync-bot@example.com"
+          git config user.name "Sync Bot"
 
       # 修改：使用变基(rebase)替代重置(reset)
       - name: Rebase onto upstream
