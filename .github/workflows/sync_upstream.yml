@@ -22,13 +22,12 @@ jobs:
           git remote add upstream https://github.com/Fansirsqi/Sesame-TK.git
           git fetch upstream
 
-      # 修改：配置 sparse-checkout 排除 .github 目录（包含所有子路径）
+      # 修改：配置 sparse-checkout 排除所有层级的.github目录
       - name: Configure sparse checkout
         run: |
           git config core.sparseCheckout true
-          echo "/*" > .git/info/sparse-checkout        # 首先包含根目录所有内容
-          echo "!/.github" >> .git/info/sparse-checkout  # 排除根目录下的.github
-          echo "!/.github/**/*" >> .git/info/sparse-checkout  # 排除所有子路径.github
+          echo "/*" > .git/info/sparse-checkout        # 包含根目录所有内容
+          echo "!/**/*.github" >> .git/info/sparse-checkout  # 删除:原多层级排除规则
           git read-tree -mu HEAD
 
       # 步骤3：检查是否有新提交（优化比较逻辑）
@@ -75,3 +74,4 @@ jobs:
               workflow_id: 'build_release.yml',
               ref: 'main'
             })
+
