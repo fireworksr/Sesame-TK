@@ -14,25 +14,33 @@ jobs:
     name: 🔍 同步检查
     
     steps:
-      - name: 📥 获取本地提交记录
+      - name: 🛠️ 设置 Git 权限
         run: |
           git config --global user.name "Sesame-TK Bot"
           git config --global user.email "bot@sesame-tk.com"
-          # 获取本地所有提交哈希
+        # 中文注释：配置 Git 用户信息（必须在 checkout 之后）
+
+      - name: 📦 检出本地仓库
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 获取完整历史记录
+
+      - name: 📥 获取本地提交记录
+        run: |
           git log --pretty=format:"%H" > local_hashes.txt
           echo "本地提交记录已保存"
-        # 中文注释：获取本地Git提交历史记录用于比对
+        # 中文注释：获取本地 Git 提交历史记录用于比对
 
       - name: 🌐 获取上游最新提交
         id: get_upstream
         run: |
-          # 通过GitHub API获取上游仓库最新提交
-          response=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" 
+          # 通过 GitHub API 获取上游仓库最新提交
+          response=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/Ziayongyao/Sesame-TK/commits")
           latest_hash=$(echo $response | jq -r '.[0].sha')
           echo "latest_hash=$latest_hash" >> $GITHUB_ENV
           echo "获取上游最新提交: $latest_hash"
-        # 中文注释：调用GitHub API获取上游仓库最新提交哈希
+        # 中文注释：调用 GitHub API 获取上游仓库最新提交哈希
 
       - name: 🔍 检查新提交
         id: check_new
@@ -51,38 +59,45 @@ jobs:
     runs-on: ubuntu-latest
     name: 🔄 分支合并
     needs: sync-check
+    permissions:
+      contents: write  # 允许触发工作流
     
     steps:
-      - name: 📦 准备环境
-        run: |
-          mkdir -p ~/workspace
-          cd ~/workspace
-        # 中文注释：创建工作目录
+      - name: 📦 检出主分支
+        uses: actions/checkout@v3
+        with:
+          ref: main
+          path: main-branch
 
-      - name: 🧩 克隆仓库
-        run: |
-          git clone https://github.com/Ziayongyao/Sesame-TK.git .
-          git remote add upstream https://github.com/Ziayongyao/Sesame-TK.git
-        # 中文注释：克隆主仓库和设置上游远程
+      - name: 🧩 检出上游分支
+        uses: actions/checkout@v3
+        with:
+          repository: Ziayongyao/Sesame-TK
+          ref: main
+          path: upstream-branch
 
       - name: 🔀 合并上游改动
         run: |
-          # 排除工作流目录进行合并
+          cd main-branch
+          git remote add upstream ../upstream-branch
           git fetch upstream
-          git checkout main
           git merge --no-commit upstream/main
           
           # 保留本地工作流文件
           git checkout main -- .github/workflows/*
           git commit -m "Merge upstream changes, keep local workflows"
+          
+          # 推送合并结果
+          git push origin main
+        working-directory: main-branch
         # 中文注释：执行合并操作并保留本地工作流
 
       - name: 🚀 触发构建流程
         if: success()
         run: |
-          # 使用GitHub API触发构建工作流
-          curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" 
-          -H "Accept: application/vnd.github.v3+json" 
-          https://api.github.com/repos/Ziayongyao/Sesame-TK/actions/workflows/build_release.yml/dispatches
-          --data '{"ref":"main"}'
+          # 使用 GitHub API 触发构建工作流
+          curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/Ziayongyao/Sesame-TK/actions/workflows/build_release.yml/dispatches \
+            --data '{"ref":"main"}'
         # 中文注释：合并成功后触发构建流程
