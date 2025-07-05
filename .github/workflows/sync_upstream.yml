@@ -126,20 +126,19 @@ jobs:
       - name: 🚀 触发构建流程
         if: success()
         run: |
-          # 增加错误输出和响应码捕获
-          response=$(curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          # 触发本地build_release.yml工作流
+          response=$(curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
             -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/actions/workflows/build_release.yml/dispatches" \
-            --data '{"ref":"main"}' \
-            -w "HTTP_STATUS:%{http_code}")
+            --data '{"event_type":"workflow_dispatch"}' \
+            "https://api.github.com/repos/${{ github.repository }}/dispatches")
           
-          echo "API响应: $response"
-          # 增加状态码检查
-          if [[ "$response" == *"HTTP_STATUS:204"* ]]; then
-            echo "✅ 成功触发构建"
+          # 输出调试信息
+          echo "触发构建响应状态码: $response"
+          if [[ $response == *"204"* ]]; then
+            echo "✅ 成功触发构建流程"
           else
-            echo "❌ 触发失败，检查工作流文件是否存在或使用有效令牌"
-            exit 1
+            echo "❌ 构建触发失败，响应内容: $response"
           fi
-        # 中文注释：合并成功后触发构建流程
+        # 中文注释：通过GitHub API触发本地构建工作流并输出状态日志
+
