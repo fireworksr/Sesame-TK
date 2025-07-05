@@ -69,36 +69,48 @@ jobs:
           ref: main
           path: main-branch  # 显式声明路径
 
-      - name: 🧩 检出上游分支
+      - name: 🧩 检出上游分支（完整历史）
         uses: actions/checkout@v3
         with:
           repository: Ziayongyao/Sesame-TK
           ref: main
           path: upstream-branch  # 显式声明路径
+          fetch-depth: 0  # 强制完整克隆
 
       - name: 🔀 合并上游改动
         run: |
-          # 显式声明绝对路径
+          # 定义路径常量
           MAIN_PATH=$GITHUB_WORKSPACE/main-branch
           UPSTREAM_PATH=$GITHUB_WORKSPACE/upstream-branch
           
           # 进入主分支目录
           cd $MAIN_PATH
           
-          # 添加上游远程
-          git remote add upstream $UPSTREAM_PATH
-          git fetch upstream
+          # 添加上游远程（使用绝对路径）
+          git remote add upstream file://$UPSTREAM_PATH
           
-          # 执行合并操作
-          git merge --no-commit upstream/main
+          # 获取上游完整历史（关键改进）
+          git fetch upstream +refs/heads/*:refs/remotes/upstream/*
+          
+          # 查看远程分支（调试用）
+          git branch -r
+          
+          # 创建本地跟踪分支（关键改进）
+          git checkout -b upstream-main upstream/main
+          
+          # 回到主分支
+          git checkout main
+          
+          # 执行合并（使用具体提交哈希）
+          git merge --no-commit upstream-main
           
           # 保留本地工作流文件
           git checkout main -- .github/workflows/*
           git commit -m "Merge upstream changes, keep local workflows"
           
-          # 推送合并结果（需配置 SSH 密钥）
+          # 推送合并结果
           git push origin main
-        # 中文注释：使用绝对路径确保目录定位准确
+        # 中文注释：使用完整引用和跟踪分支解决合并问题
 
       - name: 🚀 触发构建流程
         if: success()
