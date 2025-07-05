@@ -14,16 +14,16 @@ jobs:
     name: 🔍 同步检查
     
     steps:
-      - name: 🛠️ 设置 Git 权限
-        run: |
-          git config --global user.name "Sesame-TK Bot"
-          git config --global user.email "bot@sesame-tk.com"
-        # 中文注释：配置 Git 用户信息（必须在 checkout 之后）
-
       - name: 📦 检出本地仓库
         uses: actions/checkout@v3
         with:
           fetch-depth: 0  # 获取完整历史记录
+
+      - name: 🛠️ 设置 Git 权限
+        run: |
+          git config --global user.name "Sesame-TK Bot"
+          git config --global user.email "bot@sesame-tk.com"
+        # 中文注释：配置 Git 用户信息
 
       - name: 📥 获取本地提交记录
         run: |
@@ -67,30 +67,38 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: main
-          path: main-branch
+          path: main-branch  # 显式声明路径
 
       - name: 🧩 检出上游分支
         uses: actions/checkout@v3
         with:
           repository: Ziayongyao/Sesame-TK
           ref: main
-          path: upstream-branch
+          path: upstream-branch  # 显式声明路径
 
       - name: 🔀 合并上游改动
         run: |
-          cd main-branch
-          git remote add upstream ../upstream-branch
+          # 显式声明绝对路径
+          MAIN_PATH=$GITHUB_WORKSPACE/main-branch
+          UPSTREAM_PATH=$GITHUB_WORKSPACE/upstream-branch
+          
+          # 进入主分支目录
+          cd $MAIN_PATH
+          
+          # 添加上游远程
+          git remote add upstream $UPSTREAM_PATH
           git fetch upstream
+          
+          # 执行合并操作
           git merge --no-commit upstream/main
           
           # 保留本地工作流文件
           git checkout main -- .github/workflows/*
           git commit -m "Merge upstream changes, keep local workflows"
           
-          # 推送合并结果
+          # 推送合并结果（需配置 SSH 密钥）
           git push origin main
-        working-directory: main-branch
-        # 中文注释：执行合并操作并保留本地工作流
+        # 中文注释：使用绝对路径确保目录定位准确
 
       - name: 🚀 触发构建流程
         if: success()
