@@ -86,14 +86,15 @@ jobs:
           # 进入主分支目录
           cd $MAIN_PATH
           
+          # 设置 Git 用户信息（关键修复）
+          git config --local user.name "Sesame-TK Bot"
+          git config --local user.email "bot@sesame-tk.com"
+          
           # 添加上游远程（使用绝对路径）
           git remote add upstream file://$UPSTREAM_PATH
           
           # 获取上游完整历史
           git fetch upstream +refs/heads/*:refs/remotes/upstream/*
-          
-          # 查看远程分支（调试用）
-          git branch -r
           
           # 创建跟踪分支
           git checkout -b upstream-main upstream/main
@@ -101,16 +102,18 @@ jobs:
           # 回到主分支
           git checkout main
           
-          # 执行合并（关键改进）
+          # 执行合并（允许无关历史）
           git merge --no-commit --allow-unrelated-histories upstream-main
           
-          # 保留本地工作流文件（关键冲突解决策略）
+          # 保留本地工作流文件
           git checkout main -- .github/workflows/*
+          
+          # 提交合并结果（此时已配置用户信息）
           git commit -m "Merge upstream changes, keep local workflows"
           
           # 推送合并结果
           git push origin main
-        # 中文注释：使用 --allow-unrelated-histories 参数解决历史无关问题
+        # 中文注释：配置本地 Git 用户信息解决身份问题
 
       - name: 🚀 触发构建流程
         if: success()
