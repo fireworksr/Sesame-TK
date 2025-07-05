@@ -86,7 +86,7 @@ jobs:
           # 进入主分支目录
           cd $MAIN_PATH
           
-          # 设置 Git 用户信息（关键修复）
+          # 设置本地 Git 用户信息
           git config --local user.name "Sesame-TK Bot"
           git config --local user.email "bot@sesame-tk.com"
           
@@ -102,18 +102,19 @@ jobs:
           # 回到主分支
           git checkout main
           
-          # 执行合并（允许无关历史）
-          git merge --no-commit --allow-unrelated-histories upstream-main
+          # 执行合并（允许无关历史 + 自动冲突解决）
+          git merge --no-commit --allow-unrelated-histories \
+            -s recursive -X ours upstream-main
           
-          # 保留本地工作流文件
+          # 强制保留本地工作流文件（关键保护）
           git checkout main -- .github/workflows/*
           
-          # 提交合并结果（此时已配置用户信息）
+          # 提交合并结果
           git commit -m "Merge upstream changes, keep local workflows"
           
           # 推送合并结果
           git push origin main
-        # 中文注释：配置本地 Git 用户信息解决身份问题
+        # 中文注释：使用 recursive + X ours 策略解决冲突
 
       - name: 🚀 触发构建流程
         if: success()
