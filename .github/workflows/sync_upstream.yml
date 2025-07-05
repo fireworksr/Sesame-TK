@@ -1,126 +1,64 @@
-# 同步上游仓库并自动构建工作流
-name: Sync with Upstream and Build
+name: Sync Upstream & Merge
 
 on:
-  # 每6小时自动触发
   schedule:
-    - cron: '0 0/6 * * *'
-  # 支持手动触发
-  workflow_dispatch:
+    - cron: '0 */6 * * *'  # 每6小时触发
+  workflow_dispatch:       # 支持手动触发
 
 jobs:
-  sync-and-build:
+  sync-check:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: 检出当前仓库
-        uses: actions/checkout@v3
-        with:
-          path: sesame-tk
-
-      - name: 设置Git用户信息
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-
-      - name: 创建 sparse-checkout 规则文件
-        run: |
-          cat > sesame-tk/.sparse-checkout << EOF
-          /*
-          !/.github/workflows
-          EOF
-
-      - name: 检出上游仓库（排除工作流目录）
-        uses: actions/checkout@v3
-        with:
-          repository: Ziayongyao/Sesame-TK
-          path: upstream
-          sparse-checkout: .sparse-checkout
-          submodules: false  # 禁用子模块避免潜在冲突
-
-      - name: 进入工作区并配置远程
-        run: |
-          cd sesame-tk
-          git remote add upstream ../upstream
-          git fetch upstream
-
-      - name: 预处理本地仓库
-        run: |
-          cd sesame-tk
-          git config remote.upstream.url ../upstream
-          git config remote.upstream.fetch '+refs/heads/*:refs/remotes/upstream/*'
-          git config pack.threads 1  # 避免多线程打包导致的网络问题
-
-      - name: 检测是否有新提交
-        id: check-commits
-        run: |
-          cd sesame-tk
-          LOCAL=$(git rev-parse HEAD)
-          REMOTE=$(git rev-parse upstream/main)
-          if [ "$LOCAL" != "$REMOTE" ]; then
-            echo "有新提交需要合并"
-            echo "has_new=true" >> $GITHUB_OUTPUT
-          else
-            echo "没有新提交"
-            echo "has_new=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 智能合并上游变更（变基模式）
-        if: steps.check-commits.outputs.has_new == 'true'
-        run: |
-          set -e
-          cd sesame-tk
-          git config pull.rebase true
-          git config rebase.autoStash true
-          git config rerere.enabled true
-          
-          git pull --rebase upstream main || {
-            echo "检测到冲突，开始解决..."
-            
-            # 输出冲突文件状态
-            echo "当前冲突文件状态："
-            git status --porcelain
-            
-            # 处理已知冲突文件
-            if [ -f .github/workflows/sync_upstream.yml ]; then
-              git checkout --ours .github/workflows/sync_upstream.yml
-              sed -i '/<<<<<<< HEAD/d; /=======/d; />>>>>>> /d' .github/workflows/sync_upstream.yml
-            fi
-            
-            if [ -f README.md ]; then
-              git checkout --theirs README.md
-              git merge-file -p README.md <(git show HEAD:README.md) <(git show FETCH_HEAD:README.md) > README.tmp
-              mv README.tmp README.md
-            fi
-            
-            # 标记所有冲突已解决
-            git add .
-            
-            # 验证并清除残留冲突标记
-            if find . -type f -exec grep -lE '<<<<<<<|=======|>>>>>>>' {} \; ; then
-              echo "警告：检测到残留冲突标记"
-              find . -type f -exec sed -i '/<<<<<<< HEAD/d; /=======/d; />>>>>>> /d' {} \;
-              git add .
-            fi
-            
-            git rebase --continue || {
-              echo "强制结束变基流程"
-              git rebase --abort || true
-              git reset
-            }
-          }
-
-      - name: 提交合并结果
-        if: steps.check-commits.outputs.has_new == 'true'
-        run: |
-          cd sesame-tk
-          git add .
-          git commit -m "自动合并上游更新" || echo "没有需要提交的变更"
-          git push origin main --force-with-lease
-
-      - name: 触发构建工作流
-        if: steps.check-commits.outputs.has_new == 'true'
-        run: |
-          curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Content-Type: application/json" \
-          -d '{"event_type": "build_release"}' \
-          "https://api.github.com/repos/${{ github.repository }}/dispatches"
+    - name: Checkout local repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        
+    - name: Add upstream remote
+      run: |
+        git remote add upstream https://github.com/Ziayongyao/Sesame-TK || true
+        git fetch upstream
+        
+    - name: Check common ancestor
+      id: check_ancestor
+      run: |
+        if git merge-base --is-ancestor upstream/main main 2>/dev/null; then
+          echo "Has common ancestor"
+          exit 0
+        else
+          echo "No common ancestor"
+          exit 1
+        fi
+        
+    - name: Check for new commits (excluding workflows)
+      id: check_changes
+      run: |
+        CHANGES=$(git diff --name-only upstream/main main | grep -v '^\.github/workflows/')
+        if [ -n "$CHANGES" ]; then
+          echo "New changes detected"
+          echo "changes=$CHANGES" >> $GITHUB_ENV
+          exit 0
+        else
+          echo "No relevant changes"
+          exit 1
+        fi
+        
+    - name: Merge upstream changes
+      if: steps.check_changes.conclusion == 'success'
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        
+        # 合并时保留本地工作流文件
+        git merge --no-commit upstream/main
+        git checkout main -- .github/workflows/*
+        git commit -m "Merge upstream changes, keeping local workflows"
+        
+    - name: Trigger build release workflow
+      if: success()
+      uses: peter-evans/repository-dispatch@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        repository: ${{ github.repository }}
+        event-type: "build_release"
