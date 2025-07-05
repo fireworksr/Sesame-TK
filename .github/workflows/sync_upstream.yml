@@ -124,29 +124,13 @@ jobs:
         # 中文注释：使用 recursive + X ours 策略解决冲突
 
       - name: 🚀 触发构建流程
-        #if: success()
-        run: |
-          # 增加调试信息输出
-          echo "当前仓库: ${{ github.repository }}"
-          echo "请求令牌状态: ${{ secrets.GITHUB_TOKEN != '' }}"
-          
-          # 触发本地build_release.yml工作流
-          response=$(curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/vnd.github+json" \
-            --data '{"ref":"main","event_type":"workflow_dispatch"}' \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/build_release.yml/dispatches")
-          
-          # 输出详细调试信息
-          echo "触发构建原始响应: $response"
-          echo "HTTP状态码: $?"
-          
-          # 改进状态判断逻辑
-          if [[ "$response" == *"204"* || $? -eq 0 ]]; then
-            echo "✅ 成功触发构建流程"
-          else
-            echo "❌ 构建触发失败，响应内容: $response"
-            exit 1
-          fi
-        # 中文注释：改进构建触发逻辑并增强调试输出
-
+        if: success()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build_release.yml',
+              ref: 'main'
+            })
