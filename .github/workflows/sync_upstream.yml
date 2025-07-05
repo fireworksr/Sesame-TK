@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     name: 🔄 分支合并
     needs: sync-check
-    #if: ${{ needs.sync-check.outputs.new_commit == 'true' }}  # 正确使用Job Output
+    if: ${{ needs.sync-check.outputs.new_commit == 'true' }}  # 正确使用Job Output
     permissions:
       contents: write
       actions: write  # 新增该行以获得触发工作流的权限
@@ -125,7 +125,7 @@ jobs:
         # 中文注释：使用 recursive + X ours 策略解决冲突
 
       - name: 🚀 触发构建流程
-        #if: success()
+        if: success()
         uses: actions/github-script@v6
         with:
           script: |
