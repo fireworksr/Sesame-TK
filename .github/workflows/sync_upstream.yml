@@ -1,16 +1,12 @@
-# 同步上游仓库工作流
 name: 🔄 同步上游仓库
 
 on:
-  # 每6小时自动触发
   schedule:
     - cron: '0 */6 * * *'
-  # 支持手动触发
   workflow_dispatch:
 
-# 在全局环境变量中添加上游仓库地址
 env:
-  UPSTREAM_REPO: Ziayongyao/Sesame-TK  # 修改此行即可更新所有关联配置
+  UPSTREAM_REPO: Ziayongyao/Sesame-TK
 
 jobs:
   sync-check:
@@ -18,30 +14,27 @@ jobs:
     name: 🔍 同步检查
     
     outputs:
-      new_commit: ${{ steps.check_new.outputs.new_commit }}  # 定义Job输出
+      new_commit: ${{ steps.check_new.outputs.new_commit }}
     
     steps:
       - name: 📦 检出本地仓库
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # 获取完整历史记录
+          fetch-depth: 0
 
       - name: 🛠️ 设置 Git 权限
         run: |
           git config --global user.name "Sesame-TK Bot"
           git config --global user.email "bot@sesame-tk.com"
-        # 中文注释：配置 Git 用户信息
 
       - name: 📥 获取本地提交记录
         run: |
           git log --pretty=format:"%H" > local_hashes.txt
           echo "本地提交记录已保存"
-        # 中文注释：获取本地 Git 提交历史记录用于比对
 
       - name: 🌐 获取上游最新提交
         id: get_upstream
         run: |
-          # 使用环境变量构建 API 请求路径
           response=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/commits")
           latest_hash=$(echo $response | jq -r '.[0].sha')
@@ -51,78 +44,54 @@ jobs:
       - name: 🔍 检查新提交
         id: check_new
         run: |
-          # 检查上游哈希是否存在于本地
           if grep -q "$latest_hash" local_hashes.txt; then
             echo "无需同步，已在本地存在"
-            echo "new_commit=false" >> $GITHUB_OUTPUT  # 明确输出false
+            echo "new_commit=false" >> $GITHUB_OUTPUT
           else
             echo "发现新提交，继续执行"
-            echo "new_commit=true" >> $GITHUB_OUTPUT  # 输出true
+            echo "new_commit=true" >> $GITHUB_OUTPUT
           fi
-        # 中文注释：比对本地与上游提交哈希
 
   merge-workflow:
     runs-on: ubuntu-latest
     name: 🔄 分支合并
     needs: sync-check
-    if: ${{ needs.sync-check.outputs.new_commit == 'true' }}  # 正确使用Job Output
+    if: ${{ needs.sync-check.outputs.new_commit == 'true' }}
     permissions:
       contents: write
-      actions: write  # 新增该行以获得触发工作流的权限
+      actions: write
     
     steps:
       - name: 📦 检出主分支
         uses: actions/checkout@v3
         with:
           ref: main
-          path: main-branch  # 显式声明路径
+          path: main-branch
 
       - name: 🧩 检出上游分支
         uses: actions/checkout@v3
         with:
-          repository: ${{ env.UPSTREAM_REPO }}  # 使用环境变量
+          repository: ${{ env.UPSTREAM_REPO }}
           ref: main
           path: upstream-branch
           fetch-depth: 0
 
       - name: 🔀 合并上游改动
         run: |
-          # 定义路径常量
           MAIN_PATH=$GITHUB_WORKSPACE/main-branch
           UPSTREAM_PATH=$GITHUB_WORKSPACE/upstream-branch
-          
-          # 进入主分支目录
           cd $MAIN_PATH
-          
-          # 设置本地 Git 用户信息
           git config --local user.name "Sesame-TK Bot"
           git config --local user.email "bot@sesame-tk.com"
-          
-          # 添加上游远程（使用绝对路径）
           git remote add upstream file://$UPSTREAM_PATH
-          
-          # 获取上游完整历史
           git fetch upstream +refs/heads/*:refs/remotes/upstream/*
-          
-          # 创建跟踪分支
           git checkout -b upstream-main upstream/main
-          
-          # 回到主分支
           git checkout main
-          
-          # 执行合并（允许无关历史 + 自动冲突解决）
           git merge --no-commit --allow-unrelated-histories \
             -s recursive -X ours upstream-main
-          
-          # 强制保留本地工作流文件（关键保护）
           git checkout main -- .github/workflows/*
-          
-          # 提交合并结果
           git commit -m "Merge upstream changes, keep local workflows"
-          
-          # 推送合并结果
           git push origin main
-        # 中文注释：使用 recursive + X ours 策略解决冲突
 
       - name: 🚀 触发构建流程
         if: success()
@@ -135,4 +104,3 @@ jobs:
               workflow_id: 'build_release.yml',
               ref: 'main'
             })
-
