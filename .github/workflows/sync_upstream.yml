@@ -17,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     name: 🔍 同步检查
     
+    outputs:
+      new_commit: ${{ steps.check_new.outputs.new_commit }}  # 定义Job输出
+    
     steps:
       - name: 📦 检出本地仓库
         uses: actions/checkout@v3
@@ -51,10 +54,10 @@ jobs:
           # 检查上游哈希是否存在于本地
           if grep -q "$latest_hash" local_hashes.txt; then
             echo "无需同步，已在本地存在"
-            exit 0  # 修改为正常退出码
+            echo "new_commit=false" >> $GITHUB_OUTPUT  # 明确输出false
           else
             echo "发现新提交，继续执行"
-            echo "new_commit=true" >> $GITHUB_ENV
+            echo "new_commit=true" >> $GITHUB_OUTPUT  # 输出true
           fi
         # 中文注释：比对本地与上游提交哈希
 
@@ -62,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     name: 🔄 分支合并
     needs: sync-check
-    if: ${{ needs.sync-check.outputs.new_commit == 'true' }}  # 改用跨Job依赖输出判断
+    if: ${{ needs.sync-check.outputs.new_commit == 'true' }}  # 正确使用Job Output
     permissions:
       contents: write  # 允许触发工作流
     
