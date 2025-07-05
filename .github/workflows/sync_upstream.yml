@@ -51,7 +51,7 @@ jobs:
           # 检查上游哈希是否存在于本地
           if grep -q "$latest_hash" local_hashes.txt; then
             echo "无需同步，已在本地存在"
-            exit 1
+            exit 0
           else
             echo "发现新提交，继续执行"
             echo "new_commit=true" >> $GITHUB_ENV
