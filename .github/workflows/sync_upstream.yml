@@ -8,6 +8,10 @@ on:
   # 支持手动触发
   workflow_dispatch:
 
+# 在全局环境变量中添加上游仓库地址
+env:
+  UPSTREAM_REPO: Ziayongyao/Sesame-TK  # 修改此行即可更新所有关联配置
+
 jobs:
   sync-check:
     runs-on: ubuntu-latest
@@ -34,13 +38,12 @@ jobs:
       - name: 🌐 获取上游最新提交
         id: get_upstream
         run: |
-          # 通过 GitHub API 获取上游仓库最新提交
+          # 使用环境变量构建 API 请求路径
           response=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/Ziayongyao/Sesame-TK/commits")
+            "https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/commits")
           latest_hash=$(echo $response | jq -r '.[0].sha')
           echo "latest_hash=$latest_hash" >> $GITHUB_ENV
           echo "获取上游最新提交: $latest_hash"
-        # 中文注释：调用 GitHub API 获取上游仓库最新提交哈希
 
       - name: 🔍 检查新提交
         id: check_new
@@ -72,10 +75,10 @@ jobs:
       - name: 🧩 检出上游分支
         uses: actions/checkout@v3
         with:
-          repository: Ziayongyao/Sesame-TK
+          repository: ${{ env.UPSTREAM_REPO }}  # 使用环境变量
           ref: main
-          path: upstream-branch  # 显式声明路径
-          fetch-depth: 0  # 强制完整克隆
+          path: upstream-branch
+          fetch-depth: 0
 
       - name: 🔀 合并上游改动
         run: |
@@ -119,9 +122,8 @@ jobs:
       - name: 🚀 触发构建流程
         if: success()
         run: |
-          # 使用 GitHub API 触发构建工作流
           curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/Ziayongyao/Sesame-TK/actions/workflows/build_release.yml/dispatches \
+            "https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/actions/workflows/build_release.yml/dispatches" \
             --data '{"ref":"main"}'
         # 中文注释：合并成功后触发构建流程
