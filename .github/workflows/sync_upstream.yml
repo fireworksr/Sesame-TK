@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     name: 🔄 分支合并
     needs: sync-check
-    if: ${{ github.env.new_commit == 'true' }}  # 修改表达式语法，添加双花括号
+    if: ${{ needs.sync-check.outputs.new_commit == 'true' }}  # 改用跨Job依赖输出判断
     permissions:
       contents: write  # 允许触发工作流
     
